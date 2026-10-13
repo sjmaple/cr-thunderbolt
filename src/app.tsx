@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { PowerSyncContext } from '@powersync/react'
 
+import { isAdminDesignPreview, loadAdminDesignPreview } from '@/lib/admin-preview'
 import { i18n } from '@/i18n'
 
 import ChatDetailPage from '@/chats/detail'
@@ -83,6 +84,7 @@ const loadMotionFeatures = () => import('@/lib/motion-features').then((mod) => m
 // Tauri apps automatically. Deliberately-cold chunks (SSO, dev-only routes)
 // live outside the map.
 const routeChunkLoaders = {
+  ...(isAdminDesignPreview ? { admin: loadAdminDesignPreview } : {}),
   tasks: () => import('@/tasks'),
   // Secondary feature, off the chat/landing critical path — lazy per CLAUDE.md.
   projects: () => import('@/projects'),
@@ -98,6 +100,8 @@ const routeChunkLoaders = {
   // critical path (only reached via a QR/link).
   deviceApproval: () => import('@/components/device-approval'),
 }
+
+const AdminDesignPreview = routeChunkLoaders.admin ? lazy(routeChunkLoaders.admin) : () => null
 
 const TasksPage = lazy(routeChunkLoaders.tasks)
 const ProjectsPage = lazy(routeChunkLoaders.projects)
@@ -226,6 +230,12 @@ const AppRoutes = ({ initData }: { initData: InitData }) => {
               <Route path="apps/:appId" element={<MiniAppPage />} />
               {import.meta.env.DEV && <Route path="message-simulator" element={<MessageSimulatorPage />} />}
             </Route>
+
+            {isAdminDesignPreview && (
+              <Route element={<SettingsLayout />}>
+                <Route path="admin/*" element={<AdminDesignPreview />} />
+              </Route>
+            )}
 
             {/* Settings routes with SettingsLayout */}
             <Route path="settings" element={<SettingsLayout />}>
