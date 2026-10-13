@@ -52,6 +52,7 @@
     "e2e:preview": "bunx playwright test --config playwright.preview.config.ts",
     "e2e:headed": "bunx playwright test --headed",
     "docker:nuke": "bash scripts/docker-nuke.sh",
+    "dev:admin": "VITE_ADMIN_DESIGN_PREVIEW=true VITE_ADMIN_LOCAL_REVIEW=true VITE_SKIP_ONBOARDING=true vite --host 127.0.0.1 --port 1426 --strictPort",
     "build:admin": "VITE_ADMIN_DESIGN_PREVIEW=true vite build"
   },
   "size-limit": [
