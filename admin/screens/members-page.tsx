@@ -7,7 +7,7 @@ import { UserRound } from 'lucide-react'
 import { useState } from 'react'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
 import { IconTile } from '@/components/settings/icon-tile'
-import { Input } from '@/components/ui/input'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PreviewPage } from '../preview-page'
 import type { AdminPreview } from '../use-admin-preview-state'
@@ -20,17 +20,13 @@ export const MembersPage = ({ preview }: { preview: AdminPreview }) => {
   const member = preview.members.find((item) => item.id === selectedId)
   const close = () => setSelectedId(null)
   const matches = preview.members.filter((item) =>
-    (item.name + ' ' + item.email).toLowerCase().includes(query.toLowerCase()),
+    `${item.name} ${item.email}`.toLowerCase().includes(query.trim().toLowerCase()),
   )
   return (
     <PreviewPage
       title={t`Members`}
+      search={{ label: t`Search members`, placeholder: t`Search by name or email`, onSearch: setQuery }}
       onClose={close}
-      onReset={() => {
-        preview.dispatch({ type: 'reset' })
-        close()
-        setQuery('')
-      }}
       action={<PageCreateAction label={t`Invite member`} onClick={() => setSelectedId('new')} />}
       panel={
         (selectedId === 'new' || member) && (
@@ -41,13 +37,6 @@ export const MembersPage = ({ preview }: { preview: AdminPreview }) => {
       <p className="text-sm text-muted-foreground">
         <Trans>Manage membership, administrator roles, and group access.</Trans>
       </p>
-      <Input
-        type="search"
-        aria-label={t`Search members`}
-        placeholder={t`Search by name or email`}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
       {matches.map((item) => (
         <SettingsSelectableRow
           key={item.id}
@@ -80,9 +69,9 @@ export const MembersPage = ({ preview }: { preview: AdminPreview }) => {
         />
       ))}
       {matches.length === 0 && (
-        <p className="text-muted-foreground">
+        <SettingsNoResults>
           <Trans>No matching members.</Trans>
-        </p>
+        </SettingsNoResults>
       )}
     </PreviewPage>
   )

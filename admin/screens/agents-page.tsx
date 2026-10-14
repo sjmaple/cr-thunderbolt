@@ -5,7 +5,9 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { AlertTriangle, Server } from 'lucide-react'
 import { useSearchParams } from 'react-router'
+import { useState } from 'react'
 import { SettingsSectionLabel } from '@/components/settings/settings-list'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { AppLogo } from '@/components/app-logo'
 import { AgentListRow } from '@/components/settings/agents/agent-list-row'
 import { PageCreateAction } from '@/components/ui/page-create-action'
@@ -20,6 +22,10 @@ import { ThunderboltAgentPanel } from './thunderbolt-agent-panel'
 export const AgentsPage = ({ preview }: { preview: AdminPreview }) => {
   const { t } = useLingui()
   const [params, setParams] = useSearchParams()
+  const [query, setQuery] = useState('')
+  const search = query.trim().toLowerCase()
+  const matches = preview.agents.filter((item) => `${item.name} ${item.description}`.toLowerCase().includes(search))
+  const showThunderbolt = preview.state.policy.thunderboltAllowed && builtInAgent.name.toLowerCase().includes(search)
   const selectedId = params.get('agent')
   const setSelectedId = (id: string | null) => setParams(id === null ? {} : { agent: id })
   const agent = preview.agents.find((item) => item.id === selectedId)
@@ -28,11 +34,9 @@ export const AgentsPage = ({ preview }: { preview: AdminPreview }) => {
   return (
     <PreviewPage
       title={t`Agents`}
+      actionsClassName="gap-1"
+      search={{ label: t`Search agents`, placeholder: t`Search agents`, onSearch: setQuery }}
       onClose={close}
-      onReset={() => {
-        preview.dispatch({ type: 'reset' })
-        close()
-      }}
       action={
         <>
           <AgentPolicy preview={preview} />
@@ -49,7 +53,7 @@ export const AgentsPage = ({ preview }: { preview: AdminPreview }) => {
         )
       }
     >
-      {preview.state.policy.thunderboltAllowed && (
+      {showThunderbolt && (
         <AgentListRow
           icon={<AppLogo className="size-5" />}
           title={builtInAgent.name}
@@ -59,12 +63,12 @@ export const AgentsPage = ({ preview }: { preview: AdminPreview }) => {
           onOpen={() => setSelectedId(thunderboltSelected ? null : builtInAgent.id)}
         />
       )}
-      {preview.agents.length > 0 && (
+      {matches.length > 0 && (
         <SettingsSectionLabel className="mt-4">
           <Trans>Custom agents</Trans>
         </SettingsSectionLabel>
       )}
-      {preview.agents.map((item) => {
+      {matches.map((item) => {
         const groupNames = preview.groups.filter((group) => item.groupIds.includes(group.id)).map((group) => group.name)
         const access = groupNames.length ? groupNames.join(', ') : t`No groups assigned`
         const category = item.category === 'sealed' ? t`Sealed` : t`Extensible`
@@ -90,7 +94,12 @@ export const AgentsPage = ({ preview }: { preview: AdminPreview }) => {
           />
         )
       })}
-      {!preview.agents.length && !preview.state.policy.thunderboltAllowed && (
+      {search && !matches.length && !showThunderbolt && (
+        <SettingsNoResults>
+          <Trans>No matching agents.</Trans>
+        </SettingsNoResults>
+      )}
+      {!search && !preview.agents.length && !preview.state.policy.thunderboltAllowed && (
         <p className="text-muted-foreground">
           <Trans>No agents registered yet.</Trans>
         </p>

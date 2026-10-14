@@ -12,7 +12,6 @@ import { PageCreateAction } from '@/components/ui/page-create-action'
 import { PageHeader } from '@/components/ui/page-header'
 import { ModelsList } from '@/settings/models/models-list'
 import { ModelProviderIconTile, getProviderDisplay } from '@/settings/models/model-presentation'
-import { PreviewResetAction } from '../preview-reset-action'
 import type { AdminPreview } from '../use-admin-preview-state'
 import { CompanyModelPolicy } from './company-model-policy'
 import { CompanyModelEditor } from './company-model-editor'
@@ -29,12 +28,6 @@ export const CompanyModelsPage = ({ preview }: { preview: AdminPreview }) => {
       <div className="min-w-0 flex-1 overflow-hidden">
         <SettingsListPane className="gap-6 md:pb-12">
           <PageHeader title={t`Models`}>
-            <PreviewResetAction
-              onReset={() => {
-                preview.dispatch({ type: 'reset' })
-                page.select(null)
-              }}
-            />
             <CompanyModelPolicy preview={preview} />
             <PageCreateAction label={t`New Model`} onClick={() => page.requestSelect('new')} />
           </PageHeader>

@@ -8,7 +8,6 @@ import { DetailPanel, DetailPanelSurface } from '@/components/detail-panel'
 import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { SkillsList } from '@/skills/skills-list'
-import { PreviewResetAction } from '../preview-reset-action'
 import type { AdminPreview } from '../use-admin-preview-state'
 import { CompanySkillEditor } from './company-skill-editor'
 import { ResourcePageDialogs } from './resource-page-dialogs'
@@ -37,14 +36,6 @@ export const CompanySkillsPage = ({ preview }: { preview: AdminPreview }) => {
           onSelectSkill={page.requestSelect}
           onEditSkill={page.requestSelect}
           onDeleteSkill={(removeId) => page.patch({ removeId })}
-          actions={
-            <PreviewResetAction
-              onReset={() => {
-                preview.dispatch({ type: 'reset' })
-                page.select(null)
-              }}
-            />
-          }
           intro={
             <>
               <p className="text-sm text-muted-foreground">

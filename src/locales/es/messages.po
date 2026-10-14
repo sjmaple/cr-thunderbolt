@@ -2993,11 +2993,16 @@ msgstr "Ya no acepta conexiones de dispositivos"
 msgid "No matches"
 msgstr "Sin coincidencias"
 
+#: admin/screens/agents-page.tsx
+msgid "No matching agents."
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "No matching connections."
 msgstr "No hay conexiones que coincidan."
 
 #: admin/screens/agent-access-panel.tsx
+#: admin/screens/groups-page.tsx
 #: admin/screens/member-editor.tsx
 msgid "No matching groups."
 msgstr ""
@@ -3679,8 +3684,8 @@ msgstr "¿Restablecer la base de datos local?"
 #~ msgstr ""
 
 #: admin/preview-reset-action.tsx
-msgid "Reset sample data"
-msgstr ""
+#~ msgid "Reset sample data"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
@@ -3876,6 +3881,7 @@ msgstr "Buscar"
 msgid "Search across chats, models, skills, agents, and more"
 msgstr "Busca en chats, modelos, habilidades, agentes y más"
 
+#: admin/screens/agents-page.tsx
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Search agents"
 msgstr "Buscar agentes"
@@ -3913,6 +3919,7 @@ msgid "Search for a command to run…"
 msgstr "Busca un comando para ejecutar…"
 
 #: admin/screens/agent-access-panel.tsx
+#: admin/screens/groups-page.tsx
 #: admin/screens/member-editor.tsx
 msgid "Search groups"
 msgstr ""

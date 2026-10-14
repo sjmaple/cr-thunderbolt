@@ -49,7 +49,7 @@ unconnected; the injected clients return a local error for unsupported requests.
 
 Admin edits are stored in the browser's `thunderbolt-admin-design` localStorage
 entry, independently of core application records. They survive switching to
-Chats or Settings and reloading the page. Reset sample data restores the samples.
+Chats or Settings and reloading the page.
 The interaction model follows these source files at the credited commit:
 
 - `src/admin/screens/thunderbolt-agent-detail-panel.tsx`: the built-in agent has
@@ -92,7 +92,7 @@ group assignments and removes legacy individual grants and access modes; custom
 agents without assigned groups have no member access.
 
 The Agents page labels registered endpoints as Custom agents beneath Thunderbolt.
-Reset sample data is a toolbar icon; there is no sample-organization banner.
+Agents, Members, and Groups use the shared settings header search control. Membership pickers use the shared search field with a clear action.
 
 Version 2 migrates the earlier proposal's saved member/group and supported agent
 edits, removes its invented model/MCP catalog, and restores the original policy

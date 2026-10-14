@@ -6,36 +6,55 @@ import type { ReactNode } from 'react'
 import { DetailPanelSurface } from '@/components/detail-panel'
 import { SettingsListBody, SettingsListPane, settingsListBodyRowsClass } from '@/components/settings/settings-list'
 import { PageHeader } from '@/components/ui/page-header'
-import { PreviewResetAction } from './preview-reset-action'
+import { PageSearch } from '@/components/ui/page-search'
 
 /** Compose the app's settings layout and detail surface for each preview screen. */
 export const PreviewPage = ({
   title,
   action,
+  actionsClassName,
+  search,
   panel,
   onClose,
-  onReset,
   children,
 }: {
   title: string
   action?: ReactNode
+  actionsClassName?: string
+  search?: { placeholder: string; label: string; onSearch: (value: string) => void }
   panel?: ReactNode
   onClose: () => void
-  onReset: () => void
   children: ReactNode
-}) => (
-  <div className="relative flex h-full">
-    <div className="min-w-0 flex-1 overflow-hidden">
-      <SettingsListPane className="gap-6">
-        <PageHeader title={title}>
-          <PreviewResetAction onReset={onReset} />
-          {action}
-        </PageHeader>
-        <SettingsListBody className={settingsListBodyRowsClass}>{children}</SettingsListBody>
-      </SettingsListPane>
+}) => {
+  const header = (
+    <PageHeader title={title} actionsClassName={actionsClassName}>
+      {search && <PageSearch.Button />}
+      {action}
+    </PageHeader>
+  )
+  return (
+    <div className="relative flex h-full">
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <SettingsListPane>
+          {search ? (
+            <PageSearch onSearch={search.onSearch}>
+              {header}
+              <PageSearch.Input
+                role="searchbox"
+                aria-label={search.label}
+                placeholder={search.placeholder}
+                onSearch={search.onSearch}
+              />
+            </PageSearch>
+          ) : (
+            header
+          )}
+          <SettingsListBody className={settingsListBodyRowsClass}>{children}</SettingsListBody>
+        </SettingsListPane>
+      </div>
+      <DetailPanelSurface open={!!panel} onClose={onClose}>
+        {panel}
+      </DetailPanelSurface>
     </div>
-    <DetailPanelSurface open={!!panel} onClose={onClose}>
-      {panel}
-    </DetailPanelSurface>
-  </div>
-)
+  )
+}

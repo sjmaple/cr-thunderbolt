@@ -2969,11 +2969,16 @@ msgstr "デバイスからの接続を受け付けなくなりました"
 msgid "No matches"
 msgstr "一致するものがありません"
 
+#: admin/screens/agents-page.tsx
+msgid "No matching agents."
+msgstr ""
+
 #: src/settings/connections/connections-list.tsx
 msgid "No matching connections."
 msgstr "一致する接続はありません。"
 
 #: admin/screens/agent-access-panel.tsx
+#: admin/screens/groups-page.tsx
 #: admin/screens/member-editor.tsx
 msgid "No matching groups."
 msgstr ""
@@ -3655,8 +3660,8 @@ msgstr "ローカルデータベースをリセットしますか？"
 #~ msgstr ""
 
 #: admin/preview-reset-action.tsx
-msgid "Reset sample data"
-msgstr ""
+#~ msgid "Reset sample data"
+#~ msgstr ""
 
 #: src/components/modification-indicator.tsx
 msgid "Reset to Default"
@@ -3852,6 +3857,7 @@ msgstr "検索"
 msgid "Search across chats, models, skills, agents, and more"
 msgstr "チャット、モデル、スキル、エージェントなどを横断して検索"
 
+#: admin/screens/agents-page.tsx
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Search agents"
 msgstr "エージェントを検索"
@@ -3889,6 +3895,7 @@ msgid "Search for a command to run…"
 msgstr "実行するコマンドを検索…"
 
 #: admin/screens/agent-access-panel.tsx
+#: admin/screens/groups-page.tsx
 #: admin/screens/member-editor.tsx
 msgid "Search groups"
 msgstr ""

@@ -7,6 +7,7 @@ import { Users } from 'lucide-react'
 import { useState } from 'react'
 import { SettingsSelectableRow } from '@/components/settings/settings-list'
 import { IconTile } from '@/components/settings/icon-tile'
+import { SettingsNoResults } from '@/components/settings/settings-empty-state'
 import { PageCreateAction } from '@/components/ui/page-create-action'
 import { useFormatters } from '@/i18n/use-formatters'
 import { PreviewPage } from '../preview-page'
@@ -17,16 +18,15 @@ export const GroupsPage = ({ preview }: { preview: AdminPreview }) => {
   const { t } = useLingui()
   const formatters = useFormatters()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const matches = preview.groups.filter((group) => group.name.toLowerCase().includes(query.trim().toLowerCase()))
   const group = preview.groups.find((item) => item.id === selectedId)
   const close = () => setSelectedId(null)
   return (
     <PreviewPage
       title={t`Groups`}
+      search={{ label: t`Search groups`, placeholder: t`Search groups`, onSearch: setQuery }}
       onClose={close}
-      onReset={() => {
-        preview.dispatch({ type: 'reset' })
-        close()
-      }}
       action={<PageCreateAction label={t`New group`} onClick={() => setSelectedId('new')} />}
       panel={
         (selectedId === 'new' || group) && (
@@ -37,7 +37,7 @@ export const GroupsPage = ({ preview }: { preview: AdminPreview }) => {
       <p className="text-sm text-muted-foreground">
         <Trans>Give teams access to the right agents through shared groups.</Trans>
       </p>
-      {preview.groups.map((item) => {
+      {matches.map((item) => {
         const count = formatters.number(preview.members.filter((member) => member.groupIds.includes(item.id)).length)
         return (
           <SettingsSelectableRow
@@ -55,6 +55,11 @@ export const GroupsPage = ({ preview }: { preview: AdminPreview }) => {
           />
         )
       })}
+      {preview.groups.length > 0 && matches.length === 0 && (
+        <SettingsNoResults>
+          <Trans>No matching groups.</Trans>
+        </SettingsNoResults>
+      )}
       {preview.groups.length === 0 && (
         <p className="text-muted-foreground">
           <Trans>No groups yet.</Trans>
