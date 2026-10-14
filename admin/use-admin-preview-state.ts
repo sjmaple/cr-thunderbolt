@@ -16,12 +16,12 @@ import {
   type CompanyModel,
   type AgentPolicy,
 } from './data'
-import { migratePreviewState, migrateResourcePages } from './migrate-preview-state'
+import { migrateGroupOnlyAccess, migratePreviewState, migrateResourcePages } from './migrate-preview-state'
 
 export type PreviewAction =
   | { type: 'save-agent'; agent: PreviewAgent }
   | { type: 'save-member'; member: PreviewMember }
-  | { type: 'save-group'; group: PreviewGroup }
+  | { type: 'save-group'; group: PreviewGroup; memberIds?: string[] }
   | {
       type: 'remove'
       kind: 'agents' | 'members' | 'groups' | 'companySkills' | 'companyMcpServers' | 'companyModels'
@@ -36,9 +36,7 @@ export type PreviewAction =
   | {
       type: 'agent-access'
       id: string
-      accessMode: PreviewAgent['accessMode']
       groupIds: string[]
-      memberIds: string[]
     }
   | { type: 'reset' }
 
@@ -48,6 +46,22 @@ const upsert = <T extends { id: string }>(items: T[], item: T): T[] =>
     ? items.map((existing) => (existing.id === item.id ? item : existing))
     : [...items, item]
 
+/** Update one group's active memberships while retaining every other group grant. */
+const saveGroupMembers = (members: PreviewMember[], groupId: string, memberIds: string[]): PreviewMember[] => {
+  const selected = new Set(memberIds)
+  return members.map((member) => {
+    if (member.deletedAt !== null || selected.has(member.id) === member.groupIds.includes(groupId)) {
+      return member
+    }
+    return {
+      ...member,
+      groupIds: selected.has(member.id)
+        ? [...member.groupIds, groupId]
+        : member.groupIds.filter((id) => id !== groupId),
+    }
+  })
+}
+
 /** One immutable, in-memory model for every admin screen; no IO or app database writes. */
 export const previewReducer = (state: PreviewState, action: PreviewAction): PreviewState => {
   switch (action.type) {
@@ -56,7 +70,14 @@ export const previewReducer = (state: PreviewState, action: PreviewAction): Prev
     case 'save-member':
       return { ...state, members: upsert(state.members, action.member) }
     case 'save-group':
-      return { ...state, groups: upsert(state.groups, action.group) }
+      return {
+        ...state,
+        groups: upsert(state.groups, action.group),
+        members:
+          action.memberIds === undefined
+            ? state.members
+            : saveGroupMembers(state.members, action.group.id, action.memberIds),
+      }
     case 'remove':
       return {
         ...state,
@@ -94,9 +115,7 @@ export const previewReducer = (state: PreviewState, action: PreviewAction): Prev
             ? agent
             : {
                 ...agent,
-                accessMode: action.accessMode,
-                groupIds: action.accessMode === 'restricted' ? [...new Set(action.groupIds)] : [],
-                memberIds: action.accessMode === 'restricted' ? [...new Set(action.memberIds)] : [],
+                groupIds: [...new Set(action.groupIds)],
               },
         ),
       }
@@ -116,7 +135,7 @@ const persistedAdminState = (getStorage: () => StateStorage) =>
     }),
     {
       name: 'thunderbolt-admin-design',
-      version: 4,
+      version: 5,
       migrate: (persisted, version) => {
         if (version === 1) {
           const previous = persisted as { state: Parameters<typeof migratePreviewState>[0] }
@@ -127,8 +146,12 @@ const persistedAdminState = (getStorage: () => StateStorage) =>
           return { state: migrateResourcePages(previous.state) }
         }
         if (version === 3) {
-          const previous = persisted as { state: Omit<PreviewState, 'companyModels'> }
-          return { state: { ...previous.state, companyModels: [] } }
+          const previous = persisted as { state: Omit<Parameters<typeof migrateGroupOnlyAccess>[0], 'companyModels'> }
+          return { state: migrateGroupOnlyAccess({ ...previous.state, companyModels: [] }) }
+        }
+        if (version === 4) {
+          const previous = persisted as { state: Parameters<typeof migrateGroupOnlyAccess>[0] }
+          return { state: migrateGroupOnlyAccess(previous.state) }
         }
         throw new Error('Unsupported admin proposal data version')
       },

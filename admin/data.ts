@@ -6,12 +6,9 @@ import type { Model } from '@/types'
 import type { SkillFormValues } from '@/skills/skill-form'
 import { originalAgentFixtures, type OriginalAgentFixture } from './original-agent-fixtures'
 
-export type AccessMode = 'everyone' | 'admins' | 'restricted'
 export type PreviewAgent = OriginalAgentFixture & {
   enabled: boolean
-  accessMode: AccessMode
   groupIds: string[]
-  memberIds: string[]
   deletedAt: number | null
 }
 
@@ -64,9 +61,7 @@ export const createPreviewState = (): PreviewState => ({
   agents: originalAgentFixtures.map((agent) => ({
     ...agent,
     enabled: true,
-    accessMode: agent.grantedVia === 'Everyone' ? 'everyone' : 'restricted',
     groupIds: agent.grantedVia === 'Everyone' ? [] : [agent.grantedVia.split(' ')[0].toLowerCase()],
-    memberIds: [],
     deletedAt: null,
   })),
   members: [
@@ -160,8 +155,6 @@ export const createCompanyAgent = (): PreviewAgent => ({
   agentSkillCount: 0,
   capabilities: [],
   enabled: true,
-  accessMode: 'restricted',
   groupIds: [],
-  memberIds: [],
   deletedAt: null,
 })

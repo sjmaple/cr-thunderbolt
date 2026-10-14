@@ -54,20 +54,20 @@ The interaction model follows these source files at the credited commit:
 
 - `src/admin/screens/thunderbolt-agent-detail-panel.tsx`: the built-in agent has
   company Skills and a Models tab with the Personal models policy. The updated
-  proposal adds a Connections tab and moves Skills/Connections/Models editing into sidebar pages. It is not a company endpoint and has no rename, removal, or grants form.
+  proposal uses the shared What it uses summary and moves Skills/Connections/Models editing into sidebar pages. It is not a company endpoint and has no rename, removal, or grants form.
 - `src/admin/screens/registry-page.tsx`: independent policies allow personal ACP
   agents and the built-in Thunderbolt agent. Company rows show access and category.
-- `src/admin/screens/agent-detail-panel.tsx`: company agents have Details, Access,
-  and Preview sections; configuration includes name, ACP URL, category and About.
-  Models/MCP/tools are read-only endpoint information. Preview shows member-facing
-  card data and never exposes the ACP URL or raw server/tool wiring.
-- `src/admin/screens/agent-access-tab.tsx`: Everyone, Admin only and Restricted
-  are explicit access modes. Restricted grants can target groups or individuals;
-  an empty list grants nobody access. Member details reflect effective grants.
+- `src/admin/screens/agent-detail-panel.tsx`: company agents have Details and Capabilities
+  sections. Details edits name, ACP URL, category, About and access grants together.
+  Capabilities combines recorded models, integrations, connections, skills, tools,
+  inputs, modes and local connection status in one read-only view.
+- `src/admin/screens/agent-access-tab.tsx`: the proposal grants custom-agent access
+  through groups only. An empty group selection grants nobody access, and member
+  details reflect the grants inherited from their group memberships.
 
 The sidebar's **Thunderbolt agent** section contains Skills, Connections, and Models.
-The agent's Skills, Connections, and Models tabs are read-only summaries; each item links directly
-to its full editor. These pages reuse the user-facing SkillsList, SkillForm,
+The built-in agent uses the normal Settings About / What it uses summary, with
+enabled resource counts linking to the company Skills, Connections, and Models pages. These pages reuse the user-facing SkillsList, SkillForm,
 ConnectionsList, and MCP address fields. Both support enabling/disabling, editing,
 and soft removal. Skill names, slugs, descriptions and instructions are editable;
 MCP configuration includes name, URL and HTTP/SSE transport. Connections and
@@ -87,7 +87,9 @@ custom endpoints. There are no provider requests or stored API keys. Add, edit,
 enable/disable and soft removal all operate on company records independently of
 the personal library. The Personal models policy lives in the Models toolbar's
 settings menu. Version 4 preserves prior skills, connections and policies while
-adding an initially empty company model collection.
+adding an initially empty company model collection. Version 5 retains explicit
+group assignments and removes legacy individual grants and access modes; custom
+agents without assigned groups have no member access.
 
 The Agents page labels registered endpoints as Custom agents beneath Thunderbolt.
 Reset sample data is a toolbar icon; there is no sample-organization banner.

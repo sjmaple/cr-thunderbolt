@@ -4,11 +4,11 @@
 
 import '@testing-library/jest-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { useReducer } from 'react'
 import { MemoryRouter } from 'react-router'
 import { createPreviewState } from '../data'
-import { previewReducer } from '../use-admin-preview-state'
+import { previewReducer, type PreviewAction, type AdminPreview } from '../use-admin-preview-state'
 import { AgentEditor } from './agent-editor'
 import { ThunderboltAgentPanel } from './thunderbolt-agent-panel'
 
@@ -35,34 +35,83 @@ const Harness = ({ builtIn = false }: { builtIn?: boolean }) => {
 afterEach(cleanup)
 
 describe('source design agent panels', () => {
-  it('gives Thunderbolt read-only resource links without company identity or grants', () => {
+  it('shows Thunderbolt resources in the shared What it uses summary without tabs', () => {
     render(<Harness builtIn />)
-    expect(screen.getByText('Brand voice')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'What it uses' })).toBeInTheDocument()
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('ACP URL')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Brand voice/ })).toHaveAttribute(
-      'href',
-      '/admin/thunderbolt/skills?edit=brand-voice',
-    )
-    fireEvent.click(screen.getByText('Connections', { selector: 'button' }))
-    expect(screen.getByText('No company connections yet.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Manage connections' })).toHaveAttribute('href', '/admin/thunderbolt/mcp')
-    fireEvent.click(screen.getByText('Models', { selector: 'button' }))
+    expect(screen.getByRole('link', { name: '2 skills' })).toHaveAttribute('href', '/admin/thunderbolt/skills')
+    expect(screen.getByRole('link', { name: '0 connections' })).toHaveAttribute('href', '/admin/thunderbolt/mcp')
+    expect(screen.getByRole('link', { name: '0 models' })).toHaveAttribute('href', '/admin/thunderbolt/models')
     expect(screen.queryByRole('switch')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Manage models' })).toHaveAttribute('href', '/admin/thunderbolt/models')
-    expect(screen.queryByText('Standard')).not.toBeInTheDocument()
   })
-  it('shows saved endpoint wiring as read-only and excludes it from the member preview', () => {
+  it('keeps editable details separate from a single read-only capabilities tab', () => {
     render(<Harness />)
+    expect(screen.getAllByRole('radio')).toHaveLength(2)
+    expect(screen.getByRole('radio', { name: 'Details' })).toBeChecked()
     expect(screen.getByLabelText('ACP URL')).toHaveValue('wss://agents.demo.thunderbolt/sales')
-    expect(screen.getByText('sales-mcp')).toBeInTheDocument()
-    expect(screen.getByText('search_sales')).toBeInTheDocument()
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Access level' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Groups with access' })).toBeInTheDocument()
+    expect(screen.queryByText('Sales knowledge base')).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Sales desk' } })
-    fireEvent.click(screen.getByText('Preview', { selector: 'button' }))
-    expect(screen.getByText('Sales desk')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Capabilities' }))
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('ACP URL')).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Access level' })).not.toBeInTheDocument()
     expect(screen.getByText('Sales knowledge base')).toBeInTheDocument()
+    expect(screen.getByText('read')).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: 'Models' })).toHaveLength(1)
     expect(screen.queryByText('sales-mcp')).not.toBeInTheDocument()
     expect(screen.queryByText('search_sales')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Sample connection successful')
+    fireEvent.click(screen.getByRole('radio', { name: 'Details' }))
+    expect(screen.getByLabelText('Name')).toHaveValue('Sales desk')
+  })
+})
+
+const setupAgentEditor = () => {
+  const state = createPreviewState()
+  const agent = state.agents[0]
+  const dispatch = mock((_action: PreviewAction) => {})
+  const preview: AdminPreview = { ...state, state, dispatch }
+  render(<AgentEditor agent={agent} preview={preview} onClose={() => {}} />)
+  return { agent, dispatch }
+}
+
+it('saves configuration and group grants together after switching tabs', () => {
+  const { agent, dispatch } = setupAgentEditor()
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Sales desk' } })
+  fireEvent.click(screen.getByRole('button', { name: /Groups/ }))
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Engineering' }))
+  fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search groups' }), { key: 'Escape' })
+  expect(dispatch).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('radio', { name: 'Capabilities' }))
+  fireEvent.click(screen.getByRole('radio', { name: 'Details' }))
+  expect(screen.getByRole('button', { name: 'Revoke access for Engineering' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+  expect(dispatch).toHaveBeenCalledTimes(1)
+  expect(dispatch).toHaveBeenCalledWith({
+    type: 'save-agent',
+    agent: { ...agent, name: 'Sales desk', groupIds: ['sales', 'engineering'] },
+  })
+})
+
+it('discards revoked group grants and saves an empty selection without granting access', () => {
+  const { dispatch } = setupAgentEditor()
+  expect(screen.queryByRole('button', { name: 'Individuals' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('combobox', { name: 'Access level' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke access for Sales' }))
+  expect(screen.getByText('Assign a group to give its members access to this agent.')).toBeInTheDocument()
+  expect(dispatch).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
+  expect(screen.getByRole('button', { name: 'Revoke access for Sales' })).toBeInTheDocument()
+  expect(dispatch).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Revoke access for Sales' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+  expect(dispatch).toHaveBeenCalledWith({
+    type: 'save-agent',
+    agent: expect.objectContaining({ groupIds: [] }),
   })
 })

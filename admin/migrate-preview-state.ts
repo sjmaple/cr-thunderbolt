@@ -5,8 +5,20 @@
 import { slugifySkillName } from '@/dal'
 import { createCompanyAgent, createPreviewState, type PreviewAgent, type PreviewState } from './data'
 
-type LegacyAgent = Pick<PreviewAgent, 'id' | 'name' | 'description' | 'enabled' | 'groupIds' | 'deletedAt'>
+type LegacyAgent = Pick<PreviewAgent, 'id' | 'name' | 'description' | 'enabled' | 'groupIds' | 'deletedAt'> & {
+  memberIds?: string[]
+  accessMode?: 'everyone' | 'admins' | 'restricted'
+}
 type LegacyState = Pick<PreviewState, 'members' | 'groups'> & { agents: LegacyAgent[] }
+type LegacyAccessState = Omit<PreviewState, 'agents'> & {
+  agents: (PreviewAgent & { memberIds?: string[]; accessMode?: 'everyone' | 'admins' | 'restricted' })[]
+}
+
+/** Remove obsolete grant modes and individual grants while retaining existing group assignments and local edits. */
+export const migrateGroupOnlyAccess = (previous: LegacyAccessState): PreviewState => ({
+  ...previous,
+  agents: previous.agents.map(({ memberIds: _memberIds, accessMode: _accessMode, ...agent }) => agent),
+})
 
 const legacyIds: Record<string, string> = {
   'demo-sales-agent': 'sales',
@@ -21,7 +33,7 @@ export const migratePreviewState = (previous: LegacyState): PreviewState => {
   const source = createPreviewState()
   const legacyBuiltIn = previous.agents.find((agent) => agent.id === 'thunderbolt')
   const reservedIds = new Set(['thunderbolt', 'onboarding', 'research', ...Object.values(legacyIds)])
-  return {
+  return migrateGroupOnlyAccess({
     ...source,
     members: previous.members,
     groups: previous.groups,
@@ -36,7 +48,6 @@ export const migratePreviewState = (previous: LegacyState): PreviewState => {
           ...agent,
           ...legacy,
           id: agent.id,
-          accessMode: legacy.groupIds.length ? ('restricted' as const) : ('everyone' as const),
         }
       }),
       ...previous.agents
@@ -44,27 +55,27 @@ export const migratePreviewState = (previous: LegacyState): PreviewState => {
         .map((agent) => ({
           ...createCompanyAgent(),
           ...agent,
-          accessMode: agent.groupIds.length ? ('restricted' as const) : ('everyone' as const),
         })),
     ],
-  }
+  })
 }
 
-export type MetadataPreviewState = Omit<PreviewState, 'companySkills' | 'companyMcpServers' | 'companyModels'> & {
+export type MetadataPreviewState = Omit<LegacyAccessState, 'companySkills' | 'companyMcpServers' | 'companyModels'> & {
   companySkills: { id: string; name: string; description: string; deletedAt: number | null }[]
 }
 
 /** Preserve existing metadata and soft deletions while opening up full skill editing. */
-export const migrateResourcePages = (previous: MetadataPreviewState): PreviewState => ({
-  ...previous,
-  companySkills: previous.companySkills.map((skill, index) => ({
-    ...skill,
-    label: skill.name,
-    // Metadata names were not unique. A stable suffix keeps every legacy skill editable.
-    name: `${slugifySkillName(skill.name).slice(0, 48).replace(/-+$/, '') || 'skill'}-${index + 1}`,
-    instruction: '',
-    enabled: true,
-  })),
-  companyMcpServers: [],
-  companyModels: [],
-})
+export const migrateResourcePages = (previous: MetadataPreviewState): PreviewState =>
+  migrateGroupOnlyAccess({
+    ...previous,
+    companySkills: previous.companySkills.map((skill, index) => ({
+      ...skill,
+      label: skill.name,
+      // Metadata names were not unique. A stable suffix keeps every legacy skill editable.
+      name: `${slugifySkillName(skill.name).slice(0, 48).replace(/-+$/, '') || 'skill'}-${index + 1}`,
+      instruction: '',
+      enabled: true,
+    })),
+    companyMcpServers: [],
+    companyModels: [],
+  })

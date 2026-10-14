@@ -65,8 +65,8 @@ export const AgentsPage = ({ preview }: { preview: AdminPreview }) => {
         </SettingsSectionLabel>
       )}
       {preview.agents.map((item) => {
-        const mode =
-          item.accessMode === 'everyone' ? t`Everyone` : item.accessMode === 'admins' ? t`Admin only` : t`Restricted`
+        const groupNames = preview.groups.filter((group) => item.groupIds.includes(group.id)).map((group) => group.name)
+        const access = groupNames.length ? groupNames.join(', ') : t`No groups assigned`
         const category = item.category === 'sealed' ? t`Sealed` : t`Extensible`
         return (
           <AgentListRow
@@ -82,7 +82,7 @@ export const AgentsPage = ({ preview }: { preview: AdminPreview }) => {
               )
             }
             title={item.name}
-            subtitle={t`${mode} · ${category}`}
+            subtitle={t`${access} · ${category}`}
             isSelected={selectedId === item.id}
             isDimmed={!item.enabled}
             ariaLabel={item.name}

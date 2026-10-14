@@ -7,14 +7,12 @@ import { useState } from 'react'
 import { DetailField } from '@/components/settings/detail-field'
 import { Button } from '@/components/ui/button'
 import { originalAgentFixtures, flakyAcpUrl } from '../original-agent-fixtures'
-import { AgentTags } from './agent-preview'
 
 /** Endpoint responses mirror the source demo fixtures, only for its known endpoints. Never probes the network. */
 export const AgentEndpoint = ({ acpUrl }: { acpUrl: string }) => {
   const [tested, setTested] = useState(false)
   const source = originalAgentFixtures.find((agent) => agent.acpUrl === acpUrl)
   const isFailure = acpUrl === flakyAcpUrl
-  const seed = acpUrl.split('/').filter(Boolean).pop() ?? ''
   return (
     <>
       <DetailField label={<Trans>From ACP server</Trans>}>
@@ -45,19 +43,6 @@ export const AgentEndpoint = ({ acpUrl }: { acpUrl: string }) => {
           </p>
         )}
       </DetailField>
-      {source && !isFailure && (
-        <>
-          <DetailField label={<Trans>Models</Trans>}>
-            <AgentTags items={['claude-opus-4-8', 'claude-haiku-4-5']} />
-          </DetailField>
-          <DetailField label={<Trans>MCP servers</Trans>}>
-            <AgentTags items={[`${seed}-mcp`, 'shared-knowledge-mcp']} />
-          </DetailField>
-          <DetailField label={<Trans>Tools</Trans>}>
-            <AgentTags items={[`search_${seed}`, `summarize_${seed}`, 'create_note']} />
-          </DetailField>
-        </>
-      )}
     </>
   )
 }

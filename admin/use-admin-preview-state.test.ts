@@ -15,7 +15,50 @@ describe('admin preview state', () => {
     expect(twice.members.find((member) => member.id === 'jamie')?.groupIds).toEqual(['sales', 'engineering'])
     expect(original.members.find((member) => member.id === 'jamie')?.groupIds).toEqual(['sales'])
   })
-  it('soft deletes groups without widening an agent grant to everyone', () => {
+  it('saves a group and its membership atomically without changing unrelated or removed memberships', () => {
+    const fixture = createPreviewState()
+    const original = {
+      ...fixture,
+      members: fixture.members.map((member) =>
+        member.id === 'sam' ? { ...member, groupIds: ['finance', 'engineering'], deletedAt: 12 } : member,
+      ),
+    }
+    const next = previewReducer(original, {
+      type: 'save-group',
+      group: { id: 'engineering', name: 'Platform engineering', deletedAt: null },
+      memberIds: ['avery', 'jamie', 'jamie'],
+    })
+    expect(next.groups.find((group) => group.id === 'engineering')?.name).toBe('Platform engineering')
+    expect(next.members.find((member) => member.id === 'avery')?.groupIds).toEqual(['engineering'])
+    expect(next.members.find((member) => member.id === 'jamie')?.groupIds).toEqual(['sales', 'engineering'])
+    expect(next.members.find((member) => member.id === 'taylor')?.groupIds).toEqual([])
+    expect(next.members.find((member) => member.id === 'sam')).toEqual(
+      original.members.find((member) => member.id === 'sam'),
+    )
+    expect(original.groups.find((group) => group.id === 'engineering')?.name).toBe('Engineering')
+    expect(original.members.find((member) => member.id === 'jamie')?.groupIds).toEqual(['sales'])
+    expect(original.members.find((member) => member.id === 'taylor')?.groupIds).toEqual(['engineering'])
+  })
+  it('assigns initial members when creating a group and accepts an empty selection on a later save', () => {
+    const original = createPreviewState()
+    const group = { id: 'platform', name: 'Platform', deletedAt: null }
+    const created = previewReducer(original, { type: 'save-group', group, memberIds: ['jamie', 'avery'] })
+    expect(created.groups.at(-1)).toEqual(group)
+    expect(created.members.find((member) => member.id === 'jamie')?.groupIds).toEqual(['sales', 'platform'])
+    expect(created.members.find((member) => member.id === 'avery')?.groupIds).toEqual(['engineering', 'platform'])
+    const emptied = previewReducer(created, { type: 'save-group', group, memberIds: [] })
+    expect(emptied.members.find((member) => member.id === 'jamie')?.groupIds).toEqual(['sales'])
+    expect(emptied.members.find((member) => member.id === 'avery')?.groupIds).toEqual(['engineering'])
+  })
+  it('keeps membership untouched when a group save does not include a membership selection', () => {
+    const original = createPreviewState()
+    const renamed = previewReducer(original, {
+      type: 'save-group',
+      group: { id: 'engineering', name: 'Engineering team', deletedAt: null },
+    })
+    expect(renamed.members).toBe(original.members)
+  })
+  it('soft deletes groups without changing existing agent grants', () => {
     const next = previewReducer(createPreviewState(), { type: 'remove', kind: 'groups', id: 'sales', at: 42 })
     expect(next.groups.find((group) => group.id === 'sales')?.deletedAt).toBe(42)
     expect(next.agents.find((agent) => agent.id === 'demo-sales-agent')?.groupIds).toEqual(['sales'])

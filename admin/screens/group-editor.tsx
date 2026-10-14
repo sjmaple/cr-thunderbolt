@@ -3,15 +3,43 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useState } from 'react'
+import { Trash2 } from 'lucide-react'
+import { useReducer } from 'react'
 import { DetailPanel, DetailDivider } from '@/components/detail-panel'
+import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
 import { DetailField } from '@/components/settings/detail-field'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { PreviewGroup } from '../data'
+import type { PreviewGroup, PreviewMember } from '../data'
 import type { AdminPreview } from '../use-admin-preview-state'
+import { AgentAccessSummary } from './agent-access-summary'
+import { MembershipMultiSelect } from './membership-multi-select'
+
+type GroupEditorState = {
+  draft: PreviewGroup
+  memberIds: string[]
+  removing: boolean
+}
+
+/** Hold both group details and membership selections until the form is saved. */
+const useGroupEditorState = (group: PreviewGroup | undefined, members: PreviewMember[]) => {
+  const [state, patch] = useReducer(
+    (current: GroupEditorState, update: Partial<GroupEditorState>) => ({ ...current, ...update }),
+    { group, members },
+    ({ group: initialGroup, members: initialMembers }): GroupEditorState => ({
+      draft: initialGroup ?? { id: crypto.randomUUID(), name: '', deletedAt: null },
+      memberIds: initialGroup
+        ? initialMembers.filter((member) => member.groupIds.includes(initialGroup.id)).map((member) => member.id)
+        : [],
+      removing: false,
+    }),
+  )
+  return { ...state, patch }
+}
 
 export const GroupEditor = ({
   group,
@@ -23,87 +51,98 @@ export const GroupEditor = ({
   onClose: () => void
 }) => {
   const { t } = useLingui()
-  const [name, setName] = useState(group?.name ?? '')
+  const { draft, memberIds, removing, patch } = useGroupEditorState(group, preview.members)
   return (
-    <DetailPanel title={group?.name ?? t`New group`} onClose={onClose}>
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={(event) => {
-          event.preventDefault()
-          preview.dispatch({
-            type: 'save-group',
-            group: { id: group?.id ?? crypto.randomUUID(), name: name.trim(), deletedAt: null },
-          })
-          onClose()
-        }}
+    <>
+      <DetailPanel
+        title={group?.name ?? t`New group`}
+        onClose={onClose}
+        actions={
+          group && (
+            <DetailActionsMenu>
+              <DropdownMenuItem variant="destructive" onClick={() => patch({ removing: true })}>
+                <Trash2 />
+                <Trans>Remove group</Trans>
+              </DropdownMenuItem>
+            </DetailActionsMenu>
+          )
+        }
       >
-        <DetailField
-          label={
-            <Label htmlFor="admin-group-name">
-              <Trans>Group name</Trans>
-            </Label>
-          }
+        <form
+          className="flex flex-1 flex-col gap-5"
+          onSubmit={(event) => {
+            event.preventDefault()
+            preview.dispatch({
+              type: 'save-group',
+              group: { ...draft, name: draft.name.trim() },
+              memberIds,
+            })
+            onClose()
+          }}
         >
-          <Input id="admin-group-name" value={name} required onChange={(event) => setName(event.target.value)} />
-        </DetailField>
-        <Button type="submit" className="self-start" disabled={!name.trim()}>
-          <Trans>Save changes</Trans>
-        </Button>
-      </form>
-      {group && (
-        <>
-          <DetailDivider />
-          <DetailField label={<Trans>Members</Trans>}>
-            <p className="mb-3 text-sm text-muted-foreground">
-              <Trans>Membership changes are saved automatically.</Trans>
-            </p>
-            {preview.members.map((member) => (
-              <Label key={member.id} className="flex cursor-pointer items-center gap-3 py-2">
-                <Checkbox
-                  checked={member.groupIds.includes(group.id)}
-                  onCheckedChange={(checked) =>
-                    preview.dispatch({
-                      type: 'membership',
-                      memberId: member.id,
-                      groupId: group.id,
-                      enabled: checked === true,
-                    })
-                  }
-                />
-                <span>
-                  <span className="block">{member.name}</span>
-                  <span className="text-xs text-muted-foreground">{member.email}</span>
-                </span>
+          <DetailField
+            label={
+              <Label htmlFor="admin-group-name">
+                <Trans>Group name</Trans>
               </Label>
-            ))}
+            }
+          >
+            <Input
+              id="admin-group-name"
+              value={draft.name}
+              required
+              onChange={(event) => patch({ draft: { ...draft, name: event.target.value } })}
+            />
+          </DetailField>
+          <DetailField
+            label={
+              <Label htmlFor="admin-group-members">
+                <Trans>Members</Trans>
+              </Label>
+            }
+          >
+            <MembershipMultiSelect
+              id="admin-group-members"
+              items={preview.members.map((member) => ({
+                id: member.id,
+                label: member.name,
+                description: member.email,
+              }))}
+              selectedIds={memberIds}
+              onChange={(ids) => patch({ memberIds: ids })}
+              placeholder={t`Select members`}
+              searchPlaceholder={t`Search members…`}
+              emptyMessage={t`No members found`}
+              removeLabel={(name) => t`Remove ${name}`}
+            />
           </DetailField>
           <DetailDivider />
           <DetailField label={<Trans>Agents shared with this group</Trans>}>
-            {preview.agents
-              .filter(
-                (agent) =>
-                  agent.accessMode === 'everyone' ||
-                  (agent.accessMode === 'restricted' && agent.groupIds.includes(group.id)),
-              )
-              .map((agent) => (
-                <p key={agent.id} className="py-1 text-sm">
-                  {agent.name}
-                </p>
-              ))}
+            <AgentAccessSummary state={preview.state} group={draft} />
           </DetailField>
-          <Button
-            type="button"
-            variant="ghost"
-            className="self-start text-destructive"
-            onClick={() => {
-              preview.dispatch({ type: 'remove', kind: 'groups', id: group.id, at: Date.now() })
-              onClose()
-            }}
-          >
-            <Trans>Remove group</Trans>
-          </Button>
-        </>
+          <FormFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              <Trans>Cancel</Trans>
+            </Button>
+            <Button type="submit" disabled={!draft.name.trim()}>
+              <Trans>Save changes</Trans>
+            </Button>
+          </FormFooter>
+        </form>
+      </DetailPanel>
+      {group && (
+        <ConfirmActionDialog
+          open={removing}
+          title={t`Remove group?`}
+          description={t`Members will lose access granted through this group. Their other access will stay the same.`}
+          confirmLabel={t`Remove group`}
+          onCancel={() => patch({ removing: false })}
+          onConfirm={() => {
+            preview.dispatch({ type: 'remove', kind: 'groups', id: group.id, at: Date.now() })
+            onClose()
+          }}
+        />
       )}
-    </DetailPanel>
+    </>
   )
 }

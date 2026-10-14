@@ -3,16 +3,21 @@
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useReducer } from 'react'
+import { useReducer, useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import { DetailPanel, DetailDivider } from '@/components/detail-panel'
 import { DetailField } from '@/components/settings/detail-field'
+import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { ConfirmActionDialog } from '@/components/ui/confirm-action-dialog'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { FormFooter } from '@/components/ui/form-footer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { PreviewMember } from '../data'
-import { canMemberUseAgent } from '../agent-access'
+import { AgentAccessSummary } from './agent-access-summary'
+import { MembershipMultiSelect } from './membership-multi-select'
 import type { AdminPreview } from '../use-admin-preview-state'
 
 /** A member draft never changes the sample model before confirmation. */
@@ -29,7 +34,8 @@ const useMemberEditorState = (member?: PreviewMember) => {
       deletedAt: null,
     },
   )
-  return { draft, patch }
+  const [removeOpen, setRemoveOpen] = useState(false)
+  return { draft, patch, removeOpen, setRemoveOpen }
 }
 
 export const MemberEditor = ({
@@ -42,26 +48,28 @@ export const MemberEditor = ({
   onClose: () => void
 }) => {
   const { t } = useLingui()
-  const { draft, patch } = useMemberEditorState(member)
+  const { draft, patch, removeOpen, setRemoveOpen } = useMemberEditorState(member)
   const duplicateEmail = preview.members.some(
     (item) => item.id !== draft.id && item.email.toLowerCase() === draft.email.trim().toLowerCase(),
   )
   return (
-    <DetailPanel title={member?.name ?? t`Invite member`} subtitle={t`Organization membership`} onClose={onClose}>
-      {member && (
-        <DetailField label={<Trans>Agents with access</Trans>}>
-          {preview.state.policy.thunderboltAllowed && <p className="text-sm">Thunderbolt</p>}
-          {preview.agents
-            .filter((agent) => canMemberUseAgent(agent, member, preview.state))
-            .map((agent) => (
-              <p key={agent.id} className="text-sm">
-                {agent.name}
-              </p>
-            ))}
-        </DetailField>
-      )}
+    <DetailPanel
+      title={member?.name ?? t`Invite member`}
+      subtitle={t`Organization membership`}
+      onClose={onClose}
+      actions={
+        member && (
+          <DetailActionsMenu>
+            <DropdownMenuItem variant="destructive" onClick={() => setRemoveOpen(true)}>
+              <Trash2 />
+              <Trans>Remove member</Trans>
+            </DropdownMenuItem>
+          </DetailActionsMenu>
+        )
+      }
+    >
       <form
-        className="flex flex-col gap-5"
+        className="flex flex-1 flex-col gap-5"
         onSubmit={(event) => {
           event.preventDefault()
           if (duplicateEmail) {
@@ -125,45 +133,50 @@ export const MemberEditor = ({
             </SelectContent>
           </Select>
         </DetailField>
-        <DetailDivider />
-        <DetailField label={<Trans>Groups</Trans>}>
-          {preview.groups.map((group) => (
-            <Label key={group.id} className="flex cursor-pointer items-center gap-3 py-2">
-              <Checkbox
-                checked={draft.groupIds.includes(group.id)}
-                onCheckedChange={(checked) =>
-                  patch({
-                    groupIds:
-                      checked === true ? [...draft.groupIds, group.id] : draft.groupIds.filter((id) => id !== group.id),
-                  })
-                }
-              />
-              {group.name}
+        <DetailField
+          label={
+            <Label htmlFor="admin-member-groups">
+              <Trans>Groups</Trans>
             </Label>
-          ))}
+          }
+        >
+          <MembershipMultiSelect
+            id="admin-member-groups"
+            items={preview.groups.map((group) => ({ id: group.id, label: group.name }))}
+            selectedIds={draft.groupIds}
+            onChange={(groupIds) => patch({ groupIds })}
+            placeholder={t`Select groups`}
+            searchPlaceholder={t`Search groups`}
+            emptyMessage={t`No matching groups.`}
+            removeLabel={(name) => t`Remove from ${name}`}
+          />
         </DetailField>
-        <div className="flex gap-2">
-          <Button type="submit" disabled={!draft.name.trim() || !draft.email.trim() || duplicateEmail}>
-            <Trans>Save changes</Trans>
-          </Button>
+        <DetailDivider />
+        <DetailField label={<Trans>Agents with access</Trans>}>
+          <AgentAccessSummary member={draft} state={preview.state} />
+        </DetailField>
+        <FormFooter>
           <Button type="button" variant="ghost" onClick={onClose}>
             <Trans>Cancel</Trans>
           </Button>
-        </div>
-        {member && (
-          <Button
-            type="button"
-            variant="ghost"
-            className="self-start text-destructive"
-            onClick={() => {
-              preview.dispatch({ type: 'remove', kind: 'members', id: member.id, at: Date.now() })
-              onClose()
-            }}
-          >
-            <Trans>Remove member</Trans>
+          <Button type="submit" disabled={!draft.name.trim() || !draft.email.trim() || duplicateEmail}>
+            <Trans>Save changes</Trans>
           </Button>
-        )}
+        </FormFooter>
       </form>
+      {member && (
+        <ConfirmActionDialog
+          open={removeOpen}
+          title={t`Remove ${member.name}?`}
+          description={t`This member will lose their organization membership and agent access.`}
+          confirmLabel={t`Remove member`}
+          onCancel={() => setRemoveOpen(false)}
+          onConfirm={() => {
+            preview.dispatch({ type: 'remove', kind: 'members', id: member.id, at: Date.now() })
+            onClose()
+          }}
+        />
+      )}
     </DetailPanel>
   )
 }

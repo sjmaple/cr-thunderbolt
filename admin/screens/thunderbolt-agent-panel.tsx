@@ -2,30 +2,20 @@
  * All rights reserved. See admin/LICENSE.
  * Enterprise support and licensing: contact info@thunderbolt.io. */
 
-import { Trans, useLingui } from '@lingui/react/macro'
-import { useSearchParams } from 'react-router'
-import { getProviderDisplay } from '@/settings/models/model-presentation'
-import { cleanServerUrl } from '@/settings/connections/display'
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
 import { AppLogo } from '@/components/app-logo'
 import { DetailPanel } from '@/components/detail-panel'
+import { AgentUsageSummary } from '@/components/settings/agents/agent-usage-summary'
 import { IconTile } from '@/components/settings/icon-tile'
 import { builtInAgent } from '@/defaults/agents'
 import type { AdminPreview } from '../use-admin-preview-state'
-import { ThunderboltResourceSummary } from './thunderbolt-resource-summary'
-import { PanelSections } from './panel-sections'
 
 export const ThunderboltAgentPanel = ({ preview, onClose }: { preview: AdminPreview; onClose: () => void }) => {
-  const { t, i18n } = useLingui()
-  const [params, setParams] = useSearchParams()
-  const section = params.get('tab') === 'models' ? 'models' : params.get('tab') === 'mcp' ? 'mcp' : 'skills'
-  const setSection = (tab: string) =>
-    setParams(
-      (current) => {
-        current.set('tab', tab)
-        return current
-      },
-      { replace: true },
-    )
+  const { t } = useLingui()
+  const skills = preview.companySkills.filter((skill) => skill.enabled).length
+  const connections = preview.companyMcpServers.filter((server) => server.enabled === 1).length
+  const models = preview.companyModels.filter((model) => model.enabled === 1).length
+
   return (
     <DetailPanel
       title={builtInAgent.name}
@@ -33,60 +23,35 @@ export const ThunderboltAgentPanel = ({ preview, onClose }: { preview: AdminPrev
       onClose={onClose}
       icon={
         <IconTile>
-          <AppLogo className="size-5" />
+          <AppLogo className="size-5.5 text-muted-foreground" aria-hidden="true" />
         </IconTile>
       }
     >
-      <PanelSections
-        label={t`Thunderbolt settings`}
-        sections={[
-          { id: 'skills', label: t`Skills` },
-          { id: 'models', label: t`Models` },
-          { id: 'mcp', label: t`Connections` },
+      <AgentUsageSummary
+        about={
+          <Trans>
+            Thunderbolt is the agent built into the app. Everyone in your company can use it with the skills,
+            connections, and models enabled by your organization.
+          </Trans>
+        }
+        resources={[
+          {
+            label: t`Skills`,
+            summary: <Plural value={skills} one="# skill" other="# skills" />,
+            to: '/admin/thunderbolt/skills',
+          },
+          {
+            label: t`Connections`,
+            summary: <Plural value={connections} one="# connection" other="# connections" />,
+            to: '/admin/thunderbolt/mcp',
+          },
+          {
+            label: t`Models`,
+            summary: <Plural value={models} one="# model" other="# models" />,
+            to: '/admin/thunderbolt/models',
+          },
         ]}
-        value={section}
-        onChange={setSection}
       />
-      {section === 'skills' && (
-        <ThunderboltResourceSummary
-          items={preview.companySkills.map((skill) => ({ ...skill, name: skill.label }))}
-          path="/admin/thunderbolt/skills"
-          manageLabel={t`Manage skills`}
-          description={<Trans>Skills the built-in Thunderbolt agent can use for everyone in your company.</Trans>}
-          empty={<Trans>No company skills yet.</Trans>}
-        />
-      )}
-      {section === 'mcp' && (
-        <ThunderboltResourceSummary
-          items={preview.companyMcpServers.map((server) => ({
-            id: server.id,
-            name: server.name,
-            description: cleanServerUrl(server.url),
-            enabled: server.enabled === 1,
-          }))}
-          path="/admin/thunderbolt/mcp"
-          manageLabel={t`Manage connections`}
-          description={<Trans>Connections available to the company's Thunderbolt agent.</Trans>}
-          empty={<Trans>No company connections yet.</Trans>}
-        />
-      )}
-
-      {section === 'models' && (
-        <>
-          <ThunderboltResourceSummary
-            items={preview.companyModels.map((model) => ({
-              id: model.id,
-              name: model.name,
-              description: `${getProviderDisplay(i18n, { ...model, isSystem: 0 })} · ${model.model}`,
-              enabled: model.enabled === 1,
-            }))}
-            path="/admin/thunderbolt/models"
-            manageLabel={t`Manage models`}
-            description={<Trans>Models available to the company's Thunderbolt agent.</Trans>}
-            empty={<Trans>No company models yet.</Trans>}
-          />
-        </>
-      )}
     </DetailPanel>
   )
 }

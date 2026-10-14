@@ -5,11 +5,12 @@
 import { Trans, useLingui } from '@lingui/react/macro'
 import { useReducer, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import { DetailPanel, DetailDivider } from '@/components/detail-panel'
+import { DetailPanel } from '@/components/detail-panel'
 import { DetailField } from '@/components/settings/detail-field'
 import { DetailActionsMenu } from '@/components/settings/detail-actions-menu'
 import { validateAgentUrl } from '@/components/settings/agents/validate-agent-url'
 import { Button } from '@/components/ui/button'
+import { FormFooter } from '@/components/ui/form-footer'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import {
   AlertDialog,
@@ -29,28 +30,29 @@ import { createCompanyAgent, type PreviewAgent } from '../data'
 import { originalAgentFixtures } from '../original-agent-fixtures'
 import type { AdminPreview } from '../use-admin-preview-state'
 import { AgentAccessPanel } from './agent-access-panel'
-import { AgentEndpoint } from './agent-endpoint'
-import { AgentPreview } from './agent-preview'
+import { AgentCapabilities } from './agent-capabilities'
 import { PanelSections } from './panel-sections'
 
-type AgentDraft = Pick<PreviewAgent, 'name' | 'description' | 'category' | 'acpUrl'>
-/** Config edits exclude grants so saving a draft cannot undo changes made on Access. */
+type AgentDraft = Pick<PreviewAgent, 'name' | 'description' | 'category' | 'acpUrl' | 'groupIds'>
+/** Keep configuration and grants in one draft until the Details form is saved. */
 const agentDraft = (agent?: PreviewAgent): AgentDraft => ({
   name: agent?.name ?? '',
   description: agent?.description ?? '',
   category: agent?.category ?? 'sealed',
   acpUrl: agent?.acpUrl ?? '',
+  groupIds: agent?.groupIds ?? [],
 })
 
 const useAgentEditorState = (agent?: PreviewAgent) => {
   const [draft, patch] = useReducer(
     (state: AgentDraft, update: Partial<AgentDraft>) => ({ ...state, ...update }),
-    agentDraft(agent),
+    agent,
+    agentDraft,
   )
-  const [section, setSection] = useState<'details' | 'access' | 'preview'>('details')
+  const [section, setSection] = useState<'details' | 'capabilities'>('details')
   const [removeOpen, setRemoveOpen] = useState(false)
   const saved = agentDraft(agent)
-  const dirty = Object.keys(saved).some((key) => saved[key as keyof AgentDraft] !== draft[key as keyof AgentDraft])
+  const dirty = JSON.stringify(saved) !== JSON.stringify(draft)
   const validation = validateAgentUrl(draft.acpUrl.trim())
   const source = originalAgentFixtures.find((item) => item.acpUrl === draft.acpUrl.trim())
   return {
@@ -121,8 +123,7 @@ export const AgentEditor = ({
           label={t`Agent sections`}
           sections={[
             { id: 'details', label: t`Details` },
-            { id: 'access', label: t`Access` },
-            { id: 'preview', label: t`Preview` },
+            { id: 'capabilities', label: t`Capabilities` },
           ]}
           value={editor.section}
           onChange={editor.setSection}
@@ -131,7 +132,7 @@ export const AgentEditor = ({
       {editor.section === 'details' && (
         <>
           <form
-            className="flex flex-col gap-5"
+            className="flex flex-1 flex-col gap-5"
             onSubmit={(event) => {
               event.preventDefault()
               save()
@@ -217,27 +218,21 @@ export const AgentEditor = ({
                 <Trans>This is what members read to learn what the agent does.</Trans>
               </p>
             </DetailField>
+            <AgentAccessPanel draft={draft} preview={preview} onChange={editor.patch} />
             {(editor.dirty || !agent) && (
-              <div className="flex items-center gap-2">
-                <Button type="submit" disabled={!editor.canSave}>
-                  {agent ? <Trans>Save changes</Trans> : <Trans>Register agent</Trans>}
-                </Button>
+              <FormFooter>
                 <Button type="button" variant="ghost" onClick={agent ? editor.discard : onClose}>
                   {agent ? <Trans>Discard</Trans> : <Trans>Cancel</Trans>}
                 </Button>
-              </div>
+                <Button type="submit" disabled={!editor.canSave}>
+                  {agent ? <Trans>Save changes</Trans> : <Trans>Register agent</Trans>}
+                </Button>
+              </FormFooter>
             )}
           </form>
-          {agent && (
-            <>
-              <DetailDivider />
-              <AgentEndpoint key={agent.acpUrl} acpUrl={agent.acpUrl} />
-            </>
-          )}
         </>
       )}
-      {agent && editor.section === 'access' && <AgentAccessPanel agent={agent} preview={preview} />}
-      {agent && editor.section === 'preview' && <AgentPreview agent={{ ...agent, ...draft }} />}
+      {agent && editor.section === 'capabilities' && <AgentCapabilities agent={{ ...agent, ...draft }} />}
       {agent && (
         <AlertDialog open={editor.removeOpen} onOpenChange={editor.setRemoveOpen}>
           <AlertDialogContent>

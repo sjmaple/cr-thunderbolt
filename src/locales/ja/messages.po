@@ -23,7 +23,7 @@ msgstr "「{filename}」はサポートされていないファイル形式で�
 
 #. placeholder {0}: agent.agentSkillCount
 #. js-lingui:icu=%7B0%2C+plural%2C+one+%7B%23+bundled+skill%7D+other+%7B%23+bundled+skills%7D%7D&pluralize_on=0
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 msgid "# bundled skill"
 msgid_plural "# bundled skills"
 msgstr[0] ""
@@ -72,9 +72,20 @@ msgstr[1] ""
 msgid "{0} is only available on desktop"
 msgstr ""
 
+#: admin/screens/agents-page.tsx
+msgid "{access} · {category}"
+msgstr ""
+
 #: src/components/chat/chat-prompt-input.tsx
 msgid "{agentName} can't take attachments. Remove the attached files to send."
 msgstr "{agentName} は添付ファイルを受け付けません。送信するには添付ファイルを削除してください。"
+
+#. js-lingui:icu=%7Bconnections%2C+plural%2C+one+%7B%23+connection%7D+other+%7B%23+connections%7D%7D&pluralize_on=connections
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "# connection"
+msgid_plural "# connections"
+msgstr[0] ""
+msgstr[1] ""
 
 #. js-lingui:icu=%7Bcount%2C+plural%2C+one+%7B%23+chat%7D+other+%7B%23+chats%7D%7D&pluralize_on=count
 #: src/projects/index.tsx
@@ -94,6 +105,10 @@ msgid "One skill references this. If you disable it, that skill may no longer re
 msgid_plural "# skills reference this. If you disable it, they may no longer resolve."
 msgstr[0] "# 件のスキルがこれを参照しています。無効にすると、それらのスキルが解決できなくなる可能性があります。"
 
+#: admin/screens/membership-multi-select.tsx
+msgid "{count} selected"
+msgstr ""
+
 #. js-lingui:icu=%7BenabledSkills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=enabledSkills
 #: src/components/settings/agents/agent-detail.tsx
 msgid "# skill"
@@ -109,12 +124,19 @@ msgid "{label} — already in this project"
 msgstr "{label} — すでにこのプロジェクトにあります"
 
 #: admin/screens/agents-page.tsx
-msgid "{mode} · {category}"
-msgstr ""
+#~ msgid "{mode} · {category}"
+#~ msgstr ""
 
 #: src/components/chat/image-support-notice.tsx
 msgid "{modelName} can't read images. Switch to a model that can, or remove the image."
 msgstr "{modelName} は画像を読み取れません。画像に対応したモデルに切り替えるか、画像を削除してください。"
+
+#. js-lingui:icu=%7Bmodels%2C+plural%2C+one+%7B%23+model%7D+other+%7B%23+models%7D%7D&pluralize_on=models
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "# model"
+msgid_plural "# models"
+msgstr[0] ""
+msgstr[1] ""
 
 #. js-lingui:icu=%7Brows%2C+plural%2C+one+%7BThis+file+contains+%23+row+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D+other+%7BThis+file+contains+%23+rows+exported+by+%7BimportSourceEmail%7D+on+%7BimportExportedAt%7D.%7D%7D&pluralize_on=rows
 #: src/settings/preferences.tsx
@@ -139,6 +161,13 @@ msgstr[0] "このファイルには、{importExportedAt} 時点の # 行が含�
 msgid "This file contains # row."
 msgid_plural "This file contains # rows."
 msgstr[0] "このファイルには # 行が含まれています。"
+
+#. js-lingui:icu=%7Bskills%2C+plural%2C+one+%7B%23+skill%7D+other+%7B%23+skills%7D%7D&pluralize_on=skills
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "# skill"
+msgid_plural "# skills"
+msgstr[0] ""
+msgstr[1] ""
 
 #. js-lingui:icu=%7BstepCount%2C+plural%2C+one+%7BCompleted+%23+step+in+%7Bduration%7D%7D+other+%7BCompleted+%23+steps+in+%7Bduration%7D%7D%7D&pluralize_on=stepCount
 #: src/components/chat/reasoning-group-title.tsx
@@ -205,17 +234,17 @@ msgid "A WebSocket endpoint, or paste an iroh ticket from your bridge for a peer
 msgstr "WebSocket エンドポイント、またはピアツーピア接続用にブリッジの iroh チケットを貼り付けてください（NodeId のみの場合は、ピアが検出可能なときにのみ機能します）。"
 
 #: admin/screens/agent-editor.tsx
-#: admin/screens/agent-preview.tsx
 #: src/components/settings/agents/agent-detail.tsx
+#: src/components/settings/agents/agent-usage-summary.tsx
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "About"
 msgstr "概要"
 
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 msgid "Accepts"
 msgstr ""
 
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 msgid "Accepts audio"
 msgstr ""
 
@@ -223,18 +252,18 @@ msgstr ""
 msgid "Accepts connections from your devices"
 msgstr "お使いのデバイスからの接続を受け付けます"
 
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 msgid "Accepts images"
 msgstr ""
 
 #: admin/screens/agent-access-panel.tsx
 #: admin/screens/agent-editor.tsx
-msgid "Access"
-msgstr ""
+#~ msgid "Access"
+#~ msgstr ""
 
 #: admin/screens/agent-access-panel.tsx
-msgid "Access level"
-msgstr ""
+#~ msgid "Access level"
+#~ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Access token required"
@@ -289,8 +318,8 @@ msgid "Add a skill"
 msgstr "スキルを追加"
 
 #: admin/screens/agent-access-panel.tsx
-msgid "Add access"
-msgstr ""
+#~ msgid "Add access"
+#~ msgstr ""
 
 #: src/components/create-item/context.tsx
 #: src/components/settings/agents/add-custom-agent-form.tsx
@@ -359,8 +388,8 @@ msgstr ""
 
 #: admin/screens/agent-access-panel.tsx
 #: admin/screens/agents-page.tsx
-msgid "Admin only"
-msgstr ""
+#~ msgid "Admin only"
+#~ msgstr ""
 
 #: src/layout/sidebar/nav-toggle.tsx
 #~ msgid "Admin preview"
@@ -371,8 +400,8 @@ msgid "Administrator"
 msgstr ""
 
 #: admin/screens/agent-access-panel.tsx
-msgid "Admins with access"
-msgstr ""
+#~ msgid "Admins with access"
+#~ msgstr ""
 
 #: src/settings/connections/mcp-server-form.tsx
 msgid "Advanced (JSON)"
@@ -559,6 +588,10 @@ msgstr ""
 msgid "Ask me anything…"
 msgstr "何でも質問してください…"
 
+#: admin/screens/agent-access-panel.tsx
+msgid "Assign a group to give its members access to this agent."
+msgstr ""
+
 #: src/components/sync-enable-warning-dialog.tsx
 msgid "At this time, synced data is not encrypted. Enabling sync will store your data on our servers without encryption. Do you want to continue?"
 msgstr "現在、同期されるデータは暗号化されません。同期を有効にすると、データは暗号化されないまま当社のサーバーに保存されます。続行しますか？"
@@ -608,7 +641,7 @@ msgstr "認可済み。アクセスが取り消された場合は、OAuth フロ
 msgid "Authorizing…"
 msgstr "認可中…"
 
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 msgid "Available modes"
 msgstr ""
 
@@ -684,6 +717,7 @@ msgid "Calendar"
 msgstr "カレンダー"
 
 #: admin/screens/agent-editor.tsx
+#: admin/screens/group-editor.tsx
 #: admin/screens/member-editor.tsx
 #: src/components/app-error-screen.tsx
 #: src/components/approve-device-dialog.tsx
@@ -713,6 +747,10 @@ msgstr "キャンセル"
 #: src/components/ui/agent-selector/agent-selector.tsx
 msgid "Cannot change agent during reply"
 msgstr "応答中はエージェントを変更できません"
+
+#: admin/screens/agent-editor.tsx
+msgid "Capabilities"
+msgstr ""
 
 #: admin/screens/agent-editor.tsx
 msgid "Category"
@@ -1106,6 +1144,7 @@ msgid "Connection successful!"
 msgstr "接続に成功しました"
 
 #: admin/admin-sidebar.tsx
+#: admin/screens/agent-capabilities.tsx
 #: admin/screens/thunderbolt-agent-panel.tsx
 #: src/components/chat/chat-add-menu.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -1116,8 +1155,8 @@ msgid "Connections"
 msgstr "接続"
 
 #: admin/screens/thunderbolt-agent-panel.tsx
-msgid "Connections available to the company's Thunderbolt agent."
-msgstr ""
+#~ msgid "Connections available to the company's Thunderbolt agent."
+#~ msgstr ""
 
 #: admin/screens/company-mcp-page.tsx
 msgid "Connections for the company's Thunderbolt agent."
@@ -1637,7 +1676,6 @@ msgstr "スキルを無効にする"
 msgid "Disable Telemetry"
 msgstr "テレメトリーを無効にする"
 
-#: admin/screens/thunderbolt-resource-summary.tsx
 #: src/components/settings/agents/agent-row.tsx
 #: src/settings/connections/mcp-server-detail.tsx
 #: src/skills/skills-list.tsx
@@ -1648,7 +1686,6 @@ msgstr "無効"
 msgid "Disabled agents stay out of the chat agent picker."
 msgstr "無効なエージェントは、チャットのエージェント選択に表示されません。"
 
-#: admin/screens/agent-access-panel.tsx
 #: admin/screens/agent-editor.tsx
 #: src/components/settings/agents/editable-field.tsx
 #: src/skills/discard-create-dialog.tsx
@@ -1905,14 +1942,13 @@ msgstr "名前を入力してください"
 msgid "Enter your verification code"
 msgstr ""
 
-#: admin/screens/agent-access-panel.tsx
-#: admin/screens/agents-page.tsx
+#: admin/screens/agent-access-summary.tsx
 msgid "Everyone"
 msgstr ""
 
 #: admin/screens/agent-access-panel.tsx
-msgid "Everyone in your organization can use this agent."
-msgstr ""
+#~ msgid "Everyone in your organization can use this agent."
+#~ msgstr ""
 
 #: src/voice/ui/voice-mode-composer.tsx
 msgid "Exit voice mode"
@@ -2155,18 +2191,21 @@ msgstr "承知しました。次に取り組みます。"
 
 #. placeholder {0}: group.name
 #: admin/screens/agent-access-panel.tsx
-msgid "Group · {0}"
-msgstr ""
+#~ msgid "Group · {0}"
+#~ msgstr ""
 
 #: admin/screens/group-editor.tsx
 msgid "Group name"
 msgstr ""
 
 #: admin/admin-sidebar.tsx
-#: admin/screens/agent-access-panel.tsx
 #: admin/screens/groups-page.tsx
 #: admin/screens/member-editor.tsx
 msgid "Groups"
+msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+msgid "Groups with access"
 msgstr ""
 
 #: src/settings/preferences.tsx
@@ -2292,8 +2331,8 @@ msgid "Include the version prefix (e.g. /v1). Then hit “Load models” to popu
 msgstr "バージョンのプレフィックス（例: /v1）を含めてください。その後「モデルを読み込む」を押すと、下の選択肢が設定されます。"
 
 #: admin/screens/agent-access-panel.tsx
-msgid "Individuals"
-msgstr ""
+#~ msgid "Individuals"
+#~ msgstr ""
 
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Install"
@@ -2321,7 +2360,7 @@ msgstr "インストール中…"
 msgid "Instructions"
 msgstr "指示"
 
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Integrations"
 msgstr "連携"
@@ -2529,8 +2568,8 @@ msgid "Manage"
 msgstr ""
 
 #: admin/screens/thunderbolt-agent-panel.tsx
-msgid "Manage connections"
-msgstr ""
+#~ msgid "Manage connections"
+#~ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Manage integrations"
@@ -2549,12 +2588,12 @@ msgstr ""
 #~ msgstr ""
 
 #: admin/screens/thunderbolt-agent-panel.tsx
-msgid "Manage models"
-msgstr ""
+#~ msgid "Manage models"
+#~ msgstr ""
 
 #: admin/screens/thunderbolt-agent-panel.tsx
-msgid "Manage skills"
-msgstr ""
+#~ msgid "Manage skills"
+#~ msgstr ""
 
 #: admin/screens/agents-page.tsx
 #~ msgid "Manage the agents your organization can use and who has access."
@@ -2573,10 +2612,9 @@ msgid "Maximize"
 msgstr "最大化"
 
 #: admin/screens/agent-preview.tsx
-msgid "MCP"
-msgstr ""
+#~ msgid "MCP"
+#~ msgstr ""
 
-#: admin/screens/agent-endpoint.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/settings/connections/connections-list.tsx
 msgid "MCP servers"
@@ -2596,13 +2634,17 @@ msgstr ""
 
 #. placeholder {0}: member.name || member.email
 #: admin/screens/agent-access-panel.tsx
-msgid "Member · {0}"
-msgstr ""
+#~ msgid "Member · {0}"
+#~ msgstr ""
 
 #: admin/admin-sidebar.tsx
 #: admin/screens/group-editor.tsx
 #: admin/screens/members-page.tsx
 msgid "Members"
+msgstr ""
+
+#: admin/screens/group-editor.tsx
+msgid "Members will lose access granted through this group. Their other access will stay the same."
 msgstr ""
 
 #: admin/screens/groups-page.tsx
@@ -2613,11 +2655,11 @@ msgstr ""
 msgid "Members’ enabled library skills and integrations are available to this agent."
 msgstr ""
 
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 msgid "Members’ enabled library skills are available to this agent."
 msgstr ""
 
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 msgid "Members’ library skills are not shared with this agent."
 msgstr ""
 
@@ -2626,8 +2668,8 @@ msgstr ""
 #~ msgstr ""
 
 #: admin/screens/group-editor.tsx
-msgid "Membership changes are saved automatically."
-msgstr ""
+#~ msgid "Membership changes are saved automatically."
+#~ msgstr ""
 
 #: src/components/sidebar-footer.tsx
 #: src/search/commands/navigation.ts
@@ -2682,8 +2724,7 @@ msgid "Model settings"
 msgstr ""
 
 #: admin/admin-sidebar.tsx
-#: admin/screens/agent-endpoint.tsx
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 #: admin/screens/company-models-page.tsx
 #: admin/screens/thunderbolt-agent-panel.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -2694,8 +2735,8 @@ msgid "Models"
 msgstr "モデル"
 
 #: admin/screens/thunderbolt-agent-panel.tsx
-msgid "Models available to the company's Thunderbolt agent."
-msgstr ""
+#~ msgid "Models available to the company's Thunderbolt agent."
+#~ msgstr ""
 
 #: admin/screens/company-models-page.tsx
 msgid "Models for the company's Thunderbolt agent."
@@ -2844,6 +2885,14 @@ msgstr "エージェントが見つかりません"
 msgid "No agents registered yet."
 msgstr ""
 
+#: admin/screens/agent-access-summary.tsx
+msgid "No agents shared with this group."
+msgstr ""
+
+#: admin/screens/agent-access-summary.tsx
+msgid "No agents with access."
+msgstr ""
+
 #: admin/screens/agents-page.tsx
 #~ msgid "No agents yet."
 #~ msgstr ""
@@ -2865,28 +2914,32 @@ msgid "No chats yet. Anything you ask beside this app shows up here."
 msgstr ""
 
 #: admin/screens/thunderbolt-agent-panel.tsx
-msgid "No company connections yet."
-msgstr ""
+#~ msgid "No company connections yet."
+#~ msgstr ""
 
 #: admin/screens/thunderbolt-agent-panel.tsx
 #~ msgid "No company MCP servers yet."
 #~ msgstr ""
 
 #: admin/screens/thunderbolt-agent-panel.tsx
-msgid "No company models yet."
-msgstr ""
+#~ msgid "No company models yet."
+#~ msgstr ""
 
 #: admin/screens/thunderbolt-agent-panel.tsx
-msgid "No company skills yet."
-msgstr ""
+#~ msgid "No company skills yet."
+#~ msgstr ""
 
 #: src/settings/devices.tsx
 msgid "No devices yet. Sign in with sync to see devices here."
 msgstr "まだデバイスはありません。同期を有効にしてサインインすると、ここにデバイスが表示されます。"
 
-#: admin/screens/agent-access-panel.tsx
-msgid "No groups or people found"
+#: admin/screens/agents-page.tsx
+msgid "No groups assigned"
 msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+#~ msgid "No groups or people found"
+#~ msgstr ""
 
 #: admin/screens/groups-page.tsx
 msgid "No groups yet."
@@ -2920,6 +2973,11 @@ msgstr "一致するものがありません"
 msgid "No matching connections."
 msgstr "一致する接続はありません。"
 
+#: admin/screens/agent-access-panel.tsx
+#: admin/screens/member-editor.tsx
+msgid "No matching groups."
+msgstr ""
+
 #: admin/screens/members-page.tsx
 msgid "No matching members."
 msgstr ""
@@ -2940,6 +2998,10 @@ msgstr "一致するスキルはありません"
 msgid "No matching skills."
 msgstr "一致するスキルはありません。"
 
+#: admin/screens/group-editor.tsx
+msgid "No members found"
+msgstr ""
+
 #: src/settings/models/models-list.tsx
 msgid "No models configured"
 msgstr "モデルが設定されていません"
@@ -2958,8 +3020,8 @@ msgid "No models returned (server unreachable, or it doesn’t list models). Ent
 msgstr "モデルが返されませんでした（サーバーに到達できない、またはモデルを列挙していません）。モデル ID と音声 ID を手動で入力してください。"
 
 #: admin/screens/agent-access-panel.tsx
-msgid "No one yet. Add a group or individual."
-msgstr ""
+#~ msgid "No one yet. Add a group or individual."
+#~ msgstr ""
 
 #: src/projects/index.tsx
 msgid "No projects yet"
@@ -2993,7 +3055,7 @@ msgstr "「{searchQuery}」に一致するタスクが見つかりません"
 msgid "No tasks yet"
 msgstr "まだタスクはありません"
 
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-tags.tsx
 msgid "None"
 msgstr ""
 
@@ -3294,7 +3356,6 @@ msgstr "環境設定"
 msgid "Preferred Name"
 msgstr "希望する呼び名"
 
-#: admin/screens/agent-editor.tsx
 #: src/content-view/sidebar-webview.tsx
 msgid "Preview"
 msgstr "プレビュー"
@@ -3432,7 +3493,7 @@ msgstr "このデバイスを登録し、アカウントの状態を確認して
 msgid "Reload"
 msgstr "再読み込み"
 
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 msgid "Remembers context across a session"
 msgstr ""
 
@@ -3448,8 +3509,14 @@ msgstr "削除"
 #~ msgstr ""
 
 #. placeholder {0}: agent.name
+#. placeholder {0}: member.name
 #: admin/screens/agent-editor.tsx
+#: admin/screens/member-editor.tsx
 msgid "Remove {0}?"
+msgstr ""
+
+#: admin/screens/group-editor.tsx
+msgid "Remove {name}"
 msgstr ""
 
 #: admin/screens/agent-editor.tsx
@@ -3460,6 +3527,10 @@ msgstr ""
 #: src/components/revoked-device-modal.tsx
 msgid "Remove all chats, settings, and cached data from this device."
 msgstr "このデバイスからすべてのチャット、設定、キャッシュデータを削除します。"
+
+#: admin/screens/member-editor.tsx
+msgid "Remove from {name}"
+msgstr ""
 
 #: admin/screens/agent-editor.tsx
 #: admin/screens/group-editor.tsx
@@ -3478,6 +3549,10 @@ msgstr ""
 
 #: admin/screens/group-editor.tsx
 msgid "Remove group"
+msgstr ""
+
+#: admin/screens/group-editor.tsx
+msgid "Remove group?"
 msgstr ""
 
 #: src/projects/emoji-picker.tsx
@@ -3601,8 +3676,8 @@ msgstr "再起動して更新"
 
 #: admin/screens/agent-access-panel.tsx
 #: admin/screens/agents-page.tsx
-msgid "Restricted"
-msgstr ""
+#~ msgid "Restricted"
+#~ msgstr ""
 
 #: src/lib/tool-metadata.ts
 msgid "Retrieving data…"
@@ -3635,7 +3710,11 @@ msgstr "{deviceName} を取り消す"
 
 #. placeholder {0}: target.label
 #: admin/screens/agent-access-panel.tsx
-msgid "Revoke access for {0}"
+#~ msgid "Revoke access for {0}"
+#~ msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+msgid "Revoke access for {name}"
 msgstr ""
 
 #: src/components/revoke-device-dialog.tsx
@@ -3702,8 +3781,8 @@ msgid "Save a file from {appName}?"
 msgstr ""
 
 #: admin/screens/agent-access-panel.tsx
-msgid "Save access"
-msgstr ""
+#~ msgid "Save access"
+#~ msgstr ""
 
 #: admin/screens/agent-editor.tsx
 #: admin/screens/group-editor.tsx
@@ -3810,8 +3889,13 @@ msgid "Search for a command to run…"
 msgstr "実行するコマンドを検索…"
 
 #: admin/screens/agent-access-panel.tsx
-msgid "Search groups or people…"
+#: admin/screens/member-editor.tsx
+msgid "Search groups"
 msgstr ""
+
+#: admin/screens/agent-access-panel.tsx
+#~ msgid "Search groups or people…"
+#~ msgstr ""
 
 #: src/components/location-search-combobox.tsx
 msgid "Search locations…"
@@ -3819,6 +3903,10 @@ msgstr "場所を検索…"
 
 #: admin/screens/members-page.tsx
 msgid "Search members"
+msgstr ""
+
+#: admin/screens/group-editor.tsx
+msgid "Search members…"
 msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
@@ -3878,9 +3966,18 @@ msgstr ""
 msgid "Select all that apply"
 msgstr "該当するものをすべて選択"
 
+#: admin/screens/agent-access-panel.tsx
+#: admin/screens/member-editor.tsx
+msgid "Select groups"
+msgstr ""
+
 #: src/components/location-search-combobox.tsx
 msgid "Select location…"
 msgstr "場所を選択…"
+
+#: admin/screens/group-editor.tsx
+msgid "Select members"
+msgstr ""
 
 #: src/components/ui/model-selector/model-selector.tsx
 msgid "Select model"
@@ -4005,6 +4102,10 @@ msgstr "設定"
 msgid "Share debug transcript"
 msgstr ""
 
+#: admin/screens/agent-access-summary.tsx
+msgid "Shared with this group"
+msgstr ""
+
 #: src/lib/tray.tsx
 msgid "Show"
 msgstr "表示"
@@ -4108,7 +4209,7 @@ msgstr "シンプル"
 #~ msgstr ""
 
 #: admin/admin-sidebar.tsx
-#: admin/screens/agent-preview.tsx
+#: admin/screens/agent-capabilities.tsx
 #: admin/screens/thunderbolt-agent-panel.tsx
 #: src/components/settings/agents/agent-detail.tsx
 #: src/layout/sidebar/settings-sidebar.tsx
@@ -4127,8 +4228,8 @@ msgid "Skills for the company's Thunderbolt agent."
 msgstr ""
 
 #: admin/screens/thunderbolt-agent-panel.tsx
-msgid "Skills the built-in Thunderbolt agent can use for everyone in your company."
-msgstr ""
+#~ msgid "Skills the built-in Thunderbolt agent can use for everyone in your company."
+#~ msgstr ""
 
 #: src/components/onboarding/onboarding-action-buttons.tsx
 msgid "Skip"
@@ -4522,8 +4623,8 @@ msgid "This helps us personalize your experience with local settings and feature
 msgstr "地域に応じた設定や機能で体験をパーソナライズするために使用します。"
 
 #: admin/screens/agent-preview.tsx
-msgid "This is how the agent appears to your members in the Thunderbolt app."
-msgstr ""
+#~ msgid "This is how the agent appears to your members in the Thunderbolt app."
+#~ msgstr ""
 
 #: src/components/sync-setup/sync-setup-modal.tsx
 msgid "This is the first device on your account. We'll create an encryption key to protect your data and give you a recovery key to keep safe."
@@ -4548,6 +4649,10 @@ msgstr "このリンクは無効です。新しいリンクをリクエストし
 #: src/hooks/use-external-link-dialog.ts
 msgid "This link uses an address the app cannot open."
 msgstr "このリンクのアドレスはアプリで開けません。"
+
+#: admin/screens/member-editor.tsx
+msgid "This member will lose their organization membership and agent access."
+msgstr ""
 
 #: src/components/chat/error-message.tsx
 msgid "This model couldn't read the attached file. Try a different model."
@@ -4676,6 +4781,10 @@ msgstr "Thunderbolt はオープンソースです"
 msgid "Thunderbolt is the agent built into the app — always here, no setup needed. It draws on everything you have enabled in your library (skills, integrations, and MCP servers) to help with whatever you are working on."
 msgstr "Thunderbolt はアプリに組み込まれたエージェントです。いつでも利用でき、設定は不要です。ライブラリで有効にしているもの（スキル、連携、MCP サーバー）をすべて活用し、取り組んでいる作業をお手伝いします。"
 
+#: admin/screens/thunderbolt-agent-panel.tsx
+msgid "Thunderbolt is the agent built into the app. Everyone in your company can use it with the skills, connections, and models enabled by your organization."
+msgstr ""
+
 #: src/components/storage-unavailable-screen.tsx
 msgid "Thunderbolt needs browser storage (IndexedDB) to work, but it's currently disabled."
 msgstr "Thunderbolt はブラウザーのストレージ（IndexedDB）を必要としますが、現在無効になっています。"
@@ -4685,8 +4794,8 @@ msgid "Thunderbolt Pro is not available yet. Stay tuned!"
 msgstr "Thunderbolt Pro はまだ利用できません。お楽しみに！"
 
 #: admin/screens/thunderbolt-agent-panel.tsx
-msgid "Thunderbolt settings"
-msgstr ""
+#~ msgid "Thunderbolt settings"
+#~ msgstr ""
 
 #: src/widgets/connect-integration/widget.tsx
 msgid "Thunderbolt wants to connect to {providerName} Calendar"
@@ -4762,7 +4871,7 @@ msgstr "リクエストが多すぎます。少し待ってからもう一度お
 msgid "Tool input"
 msgstr "ツールの入力"
 
-#: admin/screens/agent-endpoint.tsx
+#: admin/screens/agent-capabilities.tsx
 msgid "Tools"
 msgstr ""
 
@@ -4965,6 +5074,11 @@ msgstr "バージョン {updateVersion}"
 msgid "Version {updateVersion} is available. See the update prompt to install."
 msgstr "バージョン {updateVersion} が利用できます。インストールするには更新の案内を確認してください。"
 
+#. placeholder {0}: source.group.name
+#: admin/screens/agent-access-summary.tsx
+msgid "Via {0}"
+msgstr ""
+
 #: src/settings/preferences.tsx
 msgid "Vibrate on tap"
 msgstr "タップ時に振動"
@@ -5074,7 +5188,7 @@ msgstr "エージェントが使うもの"
 msgid "What is this for?"
 msgstr "これは何のためのものですか？"
 
-#: src/components/settings/agents/agent-detail.tsx
+#: src/components/settings/agents/agent-usage-summary.tsx
 msgid "What it uses"
 msgstr "使用するもの"
 
@@ -5119,8 +5233,8 @@ msgid "Which language do you prefer?"
 msgstr "どの言語をご希望ですか？"
 
 #: admin/screens/agent-access-panel.tsx
-msgid "Who can access"
-msgstr ""
+#~ msgid "Who can access"
+#~ msgstr ""
 
 #: src/components/share-debug-transcript/share-debug-transcript-dialog.tsx
 msgid "Who can read it?"

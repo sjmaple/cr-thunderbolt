@@ -41,10 +41,11 @@ const ResourceHarness = ({ entry = '/admin' }: { entry?: string }) => {
 }
 afterEach(cleanup)
 
-it('opens a read-only skill link in the full native form and reflects saved edits in the agent', async () => {
+it('opens the skill library from its usage count and reflects saved edits in the full native form', async () => {
   render(<ResourceHarness />)
   expect(screen.queryByLabelText('Instructions')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('link', { name: /Brand voice/ }))
+  fireEvent.click(screen.getByRole('link', { name: '2 skills' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Open Brand voice' }))
   expect(screen.getByLabelText('Name')).toHaveValue('Brand voice')
   expect(screen.getByLabelText('Slug')).toHaveValue('brand-voice')
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Company voice' } })
@@ -53,15 +54,15 @@ it('opens a read-only skill link in the full native form and reflects saved edit
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
   })
   fireEvent.click(screen.getByRole('link', { name: 'Agent configuration' }))
-  expect(screen.getByRole('link', { name: /Company voice/ })).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('link', { name: /Company voice/ }))
+  expect(screen.getByRole('link', { name: '2 skills' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('link', { name: '2 skills' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Open Company voice' }))
   expect(screen.getByLabelText('Instructions')).toHaveValue('Use concise, clear language.')
 })
 
 it('validates and saves MCP configuration, links back to its editor, and soft-removes it', async () => {
   render(<ResourceHarness />)
-  fireEvent.click(screen.getByRole('radio', { name: 'Connections' }))
-  fireEvent.click(screen.getByRole('link', { name: 'Manage connections' }))
+  fireEvent.click(screen.getByRole('link', { name: '0 connections' }))
   fireEvent.click(screen.getByRole('button', { name: 'Add your first server' }))
   fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Team knowledge' } })
   fireEvent.change(screen.getByLabelText('Server URL'), { target: { value: 'invalid-url' } })
@@ -71,10 +72,10 @@ it('validates and saves MCP configuration, links back to its editor, and soft-re
   expect(screen.getByRole('button', { name: 'Open Team knowledge' })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('switch', { name: 'Disable Team knowledge' }))
   fireEvent.click(screen.getByRole('link', { name: 'Agent configuration' }))
-  fireEvent.click(screen.getByRole('radio', { name: 'Connections' }))
   expect(screen.queryByLabelText('Server URL')).not.toBeInTheDocument()
-  expect(screen.getByText('Disabled')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('link', { name: /Team knowledge/ }))
+  fireEvent.click(screen.getByRole('link', { name: '0 connections' }))
+  expect(screen.getByRole('switch', { name: 'Enable Team knowledge' })).not.toBeChecked()
+  fireEvent.click(screen.getByRole('button', { name: 'Open Team knowledge' }))
   expect(screen.getByLabelText('Server URL')).toHaveValue('https://example.com/mcp')
   await act(async () => {
     fireEvent.pointerDown(screen.getByRole('button', { name: 'More' }), { button: 0 })
@@ -82,8 +83,8 @@ it('validates and saves MCP configuration, links back to its editor, and soft-re
   fireEvent.click(screen.getByRole('menuitem', { name: 'Remove server' }))
   fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
   fireEvent.click(screen.getByRole('link', { name: 'Agent configuration' }))
-  fireEvent.click(screen.getByRole('radio', { name: 'Connections' }))
-  expect(screen.queryByRole('link', { name: /Team knowledge/ })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('link', { name: '0 connections' }))
+  expect(screen.queryByRole('button', { name: 'Open Team knowledge' })).not.toBeInTheDocument()
 })
 
 it('rejects duplicate skill slugs and protects an unsaved form when cancelled', async () => {
@@ -108,11 +109,10 @@ it('rejects duplicate skill slugs and protects an unsaved form when cancelled', 
   expect(screen.queryByLabelText('Instructions')).not.toBeInTheDocument()
 })
 
-it('uses the real model picker, persists edits in the summary, and retains the personal-model policy', async () => {
+it('uses the real model picker, updates the usage count, and retains the personal-model policy', async () => {
   render(<ResourceHarness />)
-  fireEvent.click(screen.getByRole('radio', { name: 'Models' }))
   expect(screen.queryByRole('switch')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('link', { name: 'Manage models' }))
+  fireEvent.click(screen.getByRole('link', { name: '0 models' }))
   fireEvent.click(screen.getByRole('button', { name: 'Model settings' }))
   expect(screen.getByRole('switch', { name: 'Personal models' })).toBeChecked()
   fireEvent.click(screen.getByRole('switch', { name: 'Personal models' }))
@@ -133,9 +133,9 @@ it('uses the real model picker, persists edits in the summary, and retains the p
   })
   fireEvent.click(screen.getByRole('switch', { name: `Disable ${bundled.name}` }))
   fireEvent.click(screen.getByRole('link', { name: 'Agent configuration' }))
-  fireEvent.click(screen.getByRole('radio', { name: 'Models' }))
-  expect(screen.getByText('Disabled')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('link', { name: new RegExp(bundled.name ?? bundled.id) }))
+  fireEvent.click(screen.getByRole('link', { name: '0 models' }))
+  expect(screen.getByRole('switch', { name: `Enable ${bundled.name}` })).not.toBeChecked()
+  fireEvent.click(screen.getByRole('button', { name: `Open ${bundled.name}` }))
   expect(screen.getByRole('combobox', { name: 'Provider' })).toBeDisabled()
   await act(async () => {
     fireEvent.change(screen.getByLabelText('Display Name'), { target: { value: 'Team model' } })
