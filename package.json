@@ -84,7 +84,6 @@
     "@fontsource-variable/mozilla-headline": "^5.2.2",
     "@hookform/resolvers": "^5.2.1",
     "@icons-pack/react-simple-icons": "^13.13.0",
-    "@journeyapps/wa-sqlite": "2.0.6",
     "@lingui/core": "^6.6.0",
     "@lingui/react": "^6.6.0",
     "@modelcontextprotocol/sdk": "^1.25.2",

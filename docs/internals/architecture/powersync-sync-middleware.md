@@ -157,7 +157,7 @@ import { SharedSyncImplementation } from 'powersync-web-internal/worker/sync/Sha
 > - `db/sync/WebStreamingSyncImplementation.ts`: `webOptions` still exposes that options object.
 > - `worker/worker.ts`: the shared worker still uses the `{ service, port }` handshake.
 > - `db/PowerSyncDatabase.ts`: `WebPowerSyncDatabase` (`@internal`) still exists and its base still calls `protected generateBucketStorageAdapter()` (in `@powersync/shared-internals`' `BasePowerSyncDatabase`).
-> - `@powersync/shared-internals` (runtime enum + types, and the types-only `internal/sync_protocol` subpath) and `@journeyapps/wa-sqlite` are pinned to the exact versions `@powersync/web` pins, one copy each in `bun.lock`.
+> - `@powersync/shared-internals` (runtime enum + types, and the types-only `internal/sync_protocol` subpath) is pinned to the exact version `@powersync/web` pins, one copy in `bun.lock`. `@journeyapps/wa-sqlite` is not a direct dependency; it comes only through `@powersync/web`.
 > - The FTS triggers in `src/search/fts-setup.ts` still match PowerSync's internal tables (`ps_data__*` names and the JSON `data` layout): after a fresh sync, the search index fills.
 >
 > Both hooks are declared `override`, so a renamed one fails to compile. `ThunderboltSharedSyncImplementation.test.ts` and `ThunderboltPowerSyncDatabase.test.ts` fail if a hook stops wrapping the adapter it builds; neither proves upstream still calls the hook.

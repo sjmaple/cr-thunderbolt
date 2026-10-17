@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { resetDatabase } from '@/db/database'
-import { getDatabasePath, getDatabaseType, isOpfsAvailable, isTauri } from './platform'
+import { getDatabasePath, isOpfsAvailable, isTauri } from './platform'
 import { withTimeout } from './timeout'
 
 // Only import Tauri APIs when in Tauri environment
@@ -91,18 +91,12 @@ export const resetAppDir = async (): Promise<void> => {
   await withTimeout(resetDatabase(), 10_000, 'DatabaseSingleton.reset')
 
   const appDataDirPath = await createAppDir()
-  const databaseType = await getDatabaseType()
-  const dbPath = await getDatabasePath(databaseType, appDataDirPath)
+  const dbPath = await getDatabasePath(appDataDirPath)
 
   // Only delete file if it's not an in-memory database
   if (dbPath === ':memory:') {
     return
   }
 
-  if (databaseType === 'wa-sqlite' || databaseType === 'powersync') {
-    // Both wa-sqlite and PowerSync use OPFS
-    await withTimeout(resetAppDirOpfs(), 10_000, 'resetAppDirOpfs')
-  } else {
-    throw new Error(`Unsupported database type: ${databaseType}`)
-  }
+  await withTimeout(resetAppDirOpfs(), 10_000, 'resetAppDirOpfs')
 }

@@ -274,23 +274,14 @@ export const getDatabaseType = async (): Promise<DatabaseType> => {
 }
 
 /**
- * Determines the appropriate database path based on platform and OPFS availability
- * @param databaseType - The type of database being used
+ * Determines the PowerSync database path from OPFS availability
  * @param appDataDirPath - The application data directory path
- * @returns The database path to use
+ * @returns The database path to use, or `':memory:'` when OPFS is unavailable
  */
-export const getDatabasePath = async (databaseType: DatabaseType, appDataDirPath: string): Promise<string> => {
-  // For native databases (bun-sqlite), use file path directly
-  if (databaseType === 'bun-sqlite') {
-    return `${appDataDirPath}/thunderbolt.db`
-  }
-
-  // For wa-sqlite and powersync, check OPFS availability
+export const getDatabasePath = async (appDataDirPath: string): Promise<string> => {
   const opfsAvailable = await isOpfsAvailable()
   if (opfsAvailable) {
-    // Use different filename for PowerSync to avoid conflicts during migration
-    const filename = databaseType === 'powersync' ? 'thunderbolt-sync.db' : 'thunderbolt.db'
-    return `${appDataDirPath}/${filename}`
+    return `${appDataDirPath}/thunderbolt-sync.db`
   }
 
   console.warn('OPFS not available (likely private browsing), using in-memory database')
