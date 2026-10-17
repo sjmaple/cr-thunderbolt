@@ -14,7 +14,7 @@ Global properties that survive across subsystems. Verify any change against the 
 - Tauri Shell: INV-75..80
 
 ## Identity & Tenancy
-- **INV-01** `user_id` always from JWT, never client payload; sync rules scope every row by `user_id = request.user_id()`. Cross-tenant leak structurally impossible.
+- **INV-01** `user_id` always from JWT, never client payload; the sync streams scope every row to `auth.user_id()`. Cross-tenant leak structurally impossible.
 - **INV-02** `X-Device-ID` mandatory on every PowerSync token request + upload (400 `DEVICE_ID_REQUIRED`).
 - **INV-03** Device id is client-generated UUID v4 in `localStorage[thunderbolt_device_id]`; backend never mints.
 - **INV-04** Email stored lowercase (`normalizeEmail`); lookups must normalize.

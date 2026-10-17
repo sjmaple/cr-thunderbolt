@@ -48,15 +48,15 @@ export const getPowerSyncDatabaseConfig = (
 const initialSyncTimeoutMs = 10_000
 
 /**
- * Sync rule priority we block app init on. Covers `user_essentials` (settings, models,
+ * Sync stream priority we block app init on. Covers `user_essentials` (settings, models,
  * model_profiles, devices, chat_threads) and `device_self` in
- * `powersync-service/config/config.yaml`. Lower-priority buckets (chat_messages, tasks,
- * etc.) stream in the background after the app is interactive.
+ * `powersync-service/config/config.yaml`. The lower-priority `user_data` stream (chat_messages, tasks,
+ * etc.) streams in the background after the app is interactive.
  *
  * `device_self` is here so priority 1 is never empty: a revoked device loses every other
- * bucket, and that one row is how it learns it was revoked.
+ * stream, and that one row is how it learns it was revoked.
  *
- * Falls back to global `hasSynced` if the deployed sync rules don't declare priorities yet
+ * Falls back to global `hasSynced` if the deployed sync config doesn't declare priorities
  * (see `SyncStatus.statusForPriority`).
  */
 const initialSyncPriority = 1
@@ -64,9 +64,9 @@ const initialSyncPriority = 1
 /**
  * Resolve once this device's own row is in the local `devices` table.
  *
- * The account buckets are gated on that row, so until it reaches the sync service a
+ * The account streams are gated on that row, so until it reaches the sync service a
  * just-trusted device gets a priority-1 checkpoint that is complete but empty. The row
- * arrives through `device_self` at the same moment the gated buckets unlock.
+ * arrives through `device_self` at the same moment the gated streams unlock.
  * @internal Exported for testing
  */
 export const waitForOwnDeviceRow = async (powerSync: CommonPowerSyncDatabase, signal: AbortSignal): Promise<void> => {
@@ -473,7 +473,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   }
 
   /**
-   * Wait for PowerSync's priority-1 buckets to complete their initial sync (`user_essentials` —
+   * Wait for PowerSync's priority-1 streams to complete their initial sync (`user_essentials` —
    * settings, models, model_profiles, devices, chat_threads — and `device_self`). Lower-priority data
    * (chat_messages, tasks, etc.) continues streaming in the background. Also waits for this
    * device's own row, without which priority 1 can complete empty (see `waitForOwnDeviceRow`).
