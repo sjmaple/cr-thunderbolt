@@ -52,8 +52,8 @@ const getSyncEventContext = (): Record<string, unknown> => {
     ps_connecting: status?.connecting ?? false,
     ps_has_synced: status?.hasSynced ?? false,
     ps_last_synced_at: status?.lastSyncedAt ? new Date(status.lastSyncedAt).toISOString() : null,
-    ps_uploading: status?.dataFlowStatus?.uploading ?? false,
-    ps_downloading: status?.dataFlowStatus?.downloading ?? false,
+    ps_uploading: status?.uploading ?? false,
+    ps_downloading: status?.downloading ?? false,
     uptime_ms: connectedSince ? Date.now() - connectedSince : 0,
   }
 }
@@ -96,7 +96,7 @@ export const startSyncStatusListener = (powerSync: PowerSyncDatabase, config: Po
       const currentConnected = status.connected
 
       // Track download activity timestamps
-      if (status.dataFlowStatus?.downloading) {
+      if (status.downloading) {
         lastDownloadAt = now
       }
 
