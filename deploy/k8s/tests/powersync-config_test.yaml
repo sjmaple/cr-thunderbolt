@@ -1,6 +1,7 @@
 suite: PowerSync sync config
 templates:
   - templates/configmaps.yaml
+  - templates/powersync.yaml
 tests:
   - it: keeps the device's own row ungated and gates both account streams on revocation
     template: templates/configmaps.yaml
@@ -19,3 +20,12 @@ tests:
       - matchRegex:
           path: data["config.yaml"]
           pattern: '(?s)user_essentials:.*user_id IN active_device_account.*user_data:.*user_id IN active_device_account'
+  - it: runs the pinned PowerSync version the sync config was tested on
+    template: templates/powersync.yaml
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: journeyapps/powersync-service:1.27.0
