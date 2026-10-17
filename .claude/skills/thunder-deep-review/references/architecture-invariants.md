@@ -49,10 +49,10 @@ Global properties that survive across subsystems. Verify any change against the 
 - **INV-29** Approve-device never touches local non-extractable CK.
 
 ## Sync Pipeline
-- **INV-30** Empty transformer pipeline ⇒ byte-identical to `SqliteBucketStorage`.
+- **INV-30** Lines without bucket data and non-line commands reach `SqliteBucketStorage.control()` byte-identical; sync-data lines are re-encoded in their original format.
 - **INV-31** Re-encoded payload always same wire format (JSON/BSON in = out).
-- **INV-32** Two sync paths — custom SharedWorker (Chrome/Edge/FF) vs main-thread transformer (Safari/iOS/Tauri).
-- **INV-33** `@powersync/web` `@internal` override via `powersync-web-internal` alias — brittle across upgrades; re-verify `generateStreamingImplementation()`.
+- **INV-32** Two sync worker hostings of the same `ThunderboltSharedSyncImplementation` — custom SharedWorker (Chrome/Edge/FF) vs dedicated Worker (Safari/iOS/Tauri); the main-thread adapter carries sync only when it runs in the tab (Android, IndexedDB fallback).
+- **INV-33** `@powersync/web` `@internal` override via `powersync-web-internal` alias — brittle across upgrades; re-verify `generateStreamingImplementation()` still passes its bucket storage as `adapter` (we wrap `sync.webOptions.adapter`).
 - **INV-34** HTTP streaming, not WebSockets (`SyncStreamConnectionMethod.HTTP`).
 - **INV-35** `fetchCredentials` returns `null` (not throw) on auth failure.
 - **INV-36** `uploadData` throws on failure, never `transaction.complete()` — PowerSync retries.

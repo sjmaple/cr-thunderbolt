@@ -5,8 +5,8 @@
 import { getLocalSetting } from '@/stores/local-settings-store'
 import { appVersionUnsupported } from '@/lib/app-version-unsupported'
 import { isAppVersionUnsupported } from '@/lib/app-version'
-import type { AbstractPowerSyncDatabase } from '@powersync/common'
-import { SyncStreamConnectionMethod, WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
+import type { CommonPowerSyncDatabase } from '@powersync/common'
+import { SyncStreamConnectionMethod, WASQLiteVFS } from '@powersync/web'
 import type { PowerSyncDatabase, WebPowerSyncDatabaseOptions } from '@powersync/web'
 import { wrapPowerSyncWithDrizzle } from '@powersync/drizzle-driver'
 import type { DatabaseInterface, AnyDrizzleDatabase, InitialSyncOutcome } from '../database-interface'
@@ -16,7 +16,6 @@ import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
 import { getPlatform, getWebBrowser } from '@/lib/platform'
 import { ThunderboltPowerSyncDatabase } from './ThunderboltPowerSyncDatabase'
-import { encryptionMiddleware } from './middleware/EncryptionMiddleware'
 import {
   getMsSinceLastDownload,
   sanitizeErrorForTracking,
@@ -31,7 +30,7 @@ export type PowerSyncDatabaseConfig = 'default' | 'safari-tauri'
 /**
  * Determines which PowerSync database config to use based on platform and browser.
  * - default: Non-Safari web — PowerSync's default setup works well.
- * - safari-tauri: Safari web or Tauri — full WASQLiteOpenFactory with OPFSCoopSyncVFS required.
+ * - safari-tauri: Safari web or Tauri — OPFSCoopSyncVFS in dedicated DB and sync workers.
  */
 export const getPowerSyncDatabaseConfig = (
   platform: ReturnType<typeof getPlatform> = getPlatform(),
@@ -70,9 +69,9 @@ const initialSyncPriority = 1
  * arrives through `device_self` at the same moment the gated buckets unlock.
  * @internal Exported for testing
  */
-export const waitForOwnDeviceRow = async (powerSync: AbstractPowerSyncDatabase, signal: AbortSignal): Promise<void> => {
+export const waitForOwnDeviceRow = async (powerSync: CommonPowerSyncDatabase, signal: AbortSignal): Promise<void> => {
   for await (const result of powerSync.watch('SELECT 1 FROM devices WHERE id = ?', [getDeviceId()], { signal })) {
-    if (result.rows?.length) {
+    if (result.array.length) {
       return
     }
   }
@@ -81,7 +80,8 @@ export const waitForOwnDeviceRow = async (powerSync: AbstractPowerSyncDatabase, 
 /**
  * @internal Exported for testing
  * @param opfsAvailable - Whether OPFS (`navigator.storage.getDirectory`) is actually usable on this
- * platform. Only affects the 'safari-tauri' config's VFS choice — see the comment below.
+ * platform. Only affects the 'safari-tauri' config: its VFS and whether sync runs in a worker or
+ * in the tab — see the comment below.
  */
 export const getPowerSyncOptions = (
   path: string,
@@ -94,8 +94,7 @@ export const getPowerSyncOptions = (
     return {
       database: { dbFilename },
       schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
-      transformers: [encryptionMiddleware],
-      // Always use the custom SharedWorker that embeds TransformableBucketStorage with encryption middleware.
+      // Always use the custom SharedWorker that runs sync data through the encryption middleware.
       // The middleware is data-driven (checks __enc: prefix per-value), so it safely passes through plaintext
       // when E2EE is disabled. This avoids a hard dependency on the /config endpoint at init time — if the
       // fetch fails, encrypted sync data is still decrypted correctly instead of being stored as ciphertext.
@@ -110,50 +109,47 @@ export const getPowerSyncOptions = (
   }
 
   /**
-   * Safari (web) + Tauri (iOS/Desktop): full WASQLiteOpenFactory required.
+   * Safari (web) + Tauri (iOS/Desktop).
    * OPFSCoopSyncVFS avoids IDBBatchAtomicVFS + Asyncify ("Maximum call stack size exceeded"
    * on Safari/iOS) and SharedArrayBuffer + SharedWorker (iOS WKWebView black-screen crash).
    * Falls back to IDBBatchAtomicVFS when OPFS is unavailable (e.g. WebKitGTK on Tauri Linux).
-   * The DB runs in a dedicated Worker via an explicit UMD path (import.meta.url fails under
-   * tauri:// for node_modules workers).
    *
-   * Sync runs in a dedicated Worker too: the PowerSyncDatabase-level
-   * `enableMultiTabs: true` selects SharedWebStreamingSyncImplementation, which drives the
-   * worker over Comlink — a dedicated Worker (valid under tauri://) stands in for the SharedWorker.
+   * `enableMultiTabs: true` selects SharedWebStreamingSyncImplementation, which drives the sync
+   * worker over Comlink — a dedicated Worker (valid under tauri://) stands in for the SharedWorker,
+   * keeping the sync stream off the UI thread.
+   *
+   * The DB worker is PowerSync's prebuilt worker, loaded from an absolute path because
+   * `import.meta.url` fails under tauri:// for node_modules workers. It must be a URL, not a
+   * factory: PowerSync posts the DB options to the sync worker, and a function can't be cloned.
+   * With a URL PowerSync opens OPFS in a dedicated worker, but the IndexedDB fallback in a
+   * SharedWorker whenever `enableMultiTabs` is on — so the fallback turns it off and syncs in
+   * the tab instead.
    *
    * Docs: https://docs.powersync.com/debugging/troubleshooting#common-issues
    */
   return {
-    database: new WASQLiteOpenFactory({
-      dbFilename: dbFilename,
+    database: {
+      dbFilename,
       vfs: opfsAvailable ? WASQLiteVFS.OPFSCoopSyncVFS : WASQLiteVFS.IDBBatchAtomicVFS,
-      worker: '/@powersync/worker/WASQLiteDB.umd.js',
-      flags: { enableMultiTabs: false },
-    }),
+      enableMultiTabs: opfsAvailable,
+      worker: '/@powersync/worker.js',
+    },
     schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
-    flags: { enableMultiTabs: true },
     sync: { worker: () => createDedicatedSyncWorker(dbFilename) },
-    transformers: [encryptionMiddleware],
   }
 }
 
 /**
  * Builds the dedicated Worker that hosts the sync stream on iOS/Safari.
  *
- * SharedWebStreamingSyncImplementation reads `.port` off this factory's result and drives it
- * over Comlink; on dispose it calls `.close()`. A dedicated Worker is a valid Comlink endpoint
- * but exposes `.terminate()` rather than `.close()`, so map one to the other. The result is
- * shaped as a SharedWorker to satisfy PowerSync's factory type — only `.port` is read at runtime.
+ * PowerSync drives a dedicated Worker directly as its Comlink endpoint and terminates it on
+ * dispose; only the factory's declared return type is SharedWorker, hence the cast.
  */
-const createDedicatedSyncWorker = (dbFilename: string): SharedWorker => {
-  const worker = new Worker(new URL('./worker/ThunderboltDedicatedSyncImplementation.worker.ts', import.meta.url), {
+const createDedicatedSyncWorker = (dbFilename: string): SharedWorker =>
+  new Worker(new URL('./worker/ThunderboltDedicatedSyncImplementation.worker.ts', import.meta.url), {
     type: 'module',
     name: `dedicated-sync-${dbFilename}`,
-  })
-  const port = worker as unknown as MessagePort
-  port.close = () => worker.terminate()
-  return { port } as unknown as SharedWorker
-}
+  }) as unknown as SharedWorker
 
 /**
  * PowerSync database implementation.
@@ -198,14 +194,13 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     const opfsAvailable = path !== ':memory:'
     const options = getPowerSyncOptions(path, getPowerSyncDatabaseConfig(), opfsAvailable)
 
-    // Always use ThunderboltPowerSyncDatabase with TransformableBucketStorage + encryption middleware.
+    // Always use ThunderboltPowerSyncDatabase so sync data runs through the encryption middleware.
     // The middleware is data-driven (checks __enc: prefix), so it's a no-op when E2EE is disabled.
     // This removes the hard dependency on /config at init — if the fetch fails, sync still works correctly.
     this.powerSync = new ThunderboltPowerSyncDatabase(options)
 
     // Wrap with Drizzle for type-safe queries.
-    // Cast instance: drizzle-driver expects AbstractPowerSyncDatabase from root @powersync/common; PowerSyncDatabase is from @powersync/web (nested common).
-    this._db = wrapPowerSyncWithDrizzle(this.powerSync as unknown as AbstractPowerSyncDatabase, {
+    this._db = wrapPowerSyncWithDrizzle(this.powerSync, {
       schema: drizzleSchema,
     }) as unknown as AnyDrizzleDatabase
 

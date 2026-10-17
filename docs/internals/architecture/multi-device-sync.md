@@ -27,7 +27,7 @@ Built on [PowerSync](https://powersync.com). Every device holds a local SQLite d
 
 ## Two Sync Paths
 
-Both run the transform off the UI thread in a worker hosting the same `ThunderboltSharedSyncImplementation`; only the worker _kind_ differs.
+Both run the transform off the UI thread in a worker hosting the same `ThunderboltSharedSyncImplementation`; only the worker _kind_ differs. Where multi-tab is off (Android, and the IndexedDB fallback when OPFS is unavailable), sync runs in the tab instead, through the same transformers.
 
 | Runtime                 | Path                                                  | Why this path                                                                                          |
 | ----------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |

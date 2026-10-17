@@ -3,8 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { WASQLiteOpenFactory, WASQLiteVFS } from '@powersync/web'
-import type { AbstractPowerSyncDatabase, QueryResult } from '@powersync/common'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { WASQLiteVFS } from '@powersync/web'
+import type { CommonPowerSyncDatabase, QueryResult } from '@powersync/common'
 
 const { getPowerSyncDatabaseConfig, getPowerSyncOptions, waitForOwnDeviceRow } = await import('./database')
 
@@ -65,66 +67,61 @@ describe('getPowerSyncOptions', () => {
       expect(options).not.toHaveProperty('flags')
     })
 
-    it('always includes custom SharedWorker and transformers', () => {
+    it('always includes the custom SharedWorker', () => {
       const options = getPowerSyncOptions('thunderbolt.db', 'default')
       expect(options).toHaveProperty('sync')
       expect(options.sync).toHaveProperty('worker')
-      expect(options).toHaveProperty('transformers')
-      expect(options.transformers).toHaveLength(1)
     })
   })
 
   describe('safari-tauri config', () => {
-    it('returns WASQLiteOpenFactory with OPFSCoopSyncVFS and explicit workers', () => {
-      const options = getPowerSyncOptions('opfs/thunderbolt-sync.db', 'safari-tauri')
-      expect(options.database).toBeInstanceOf(WASQLiteOpenFactory)
-      const factory = options.database as WASQLiteOpenFactory
-      expect(factory.waOptions.dbFilename).toBe('thunderbolt-sync.db')
-      expect(factory.waOptions.vfs).toBeDefined()
-      expect(factory.waOptions.worker).toBe('/@powersync/worker/WASQLiteDB.umd.js')
-      expect(factory.waOptions.flags?.enableMultiTabs).toBe(false)
+    type SafariTauriDatabase = { dbFilename: string; vfs: WASQLiteVFS; enableMultiTabs: boolean; worker: string }
+    const databaseOf = (options: ReturnType<typeof getPowerSyncOptions>) => options.database as SafariTauriDatabase
+
+    it("opens OPFSCoopSyncVFS in PowerSync's prebuilt worker from an absolute path (tauri:// safe)", () => {
+      const database = databaseOf(getPowerSyncOptions('opfs/thunderbolt-sync.db', 'safari-tauri'))
+      expect(database.dbFilename).toBe('thunderbolt-sync.db')
+      expect(database.vfs).toBe(WASQLiteVFS.OPFSCoopSyncVFS)
+      expect(database.worker).toBe('/@powersync/worker.js')
     })
 
     it('enables multi-tab sync selection and provides a dedicated sync worker factory', () => {
       const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
-      // PowerSyncDatabase-level enableMultiTabs: true selects the off-thread
-      // SharedWebStreamingSyncImplementation; the DB factory keeps its own false.
-      expect('flags' in options && options.flags).toEqual({ enableMultiTabs: true })
+      // enableMultiTabs: true selects the off-thread SharedWebStreamingSyncImplementation.
+      expect(databaseOf(options).enableMultiTabs).toBe(true)
+      expect(options).not.toHaveProperty('flags')
       expect(typeof (options.sync as { worker: () => unknown }).worker).toBe('function')
     })
 
-    it('always includes transformers', () => {
-      const options = getPowerSyncOptions('thunderbolt.db', 'safari-tauri')
-      expect(options).toHaveProperty('transformers')
-      expect(options.transformers).toHaveLength(1)
+    it('points the database worker at a file the copy-assets step publishes', () => {
+      // vite.config.ts copies `@powersync/web/dist/worker` to `/@powersync/`.
+      const { worker } = databaseOf(getPowerSyncOptions('thunderbolt-sync.db', 'safari-tauri'))
+      const workerDir = resolve(import.meta.dir, '../../../node_modules/@powersync/web/dist/worker')
+      expect(existsSync(resolve(workerDir, worker.replace('/@powersync/', '')))).toBe(true)
     })
 
     it('extracts dbFilename from path correctly', () => {
       const options = getPowerSyncOptions('foo/bar/thunderbolt-sync.db', 'safari-tauri')
-      const factory = options.database as WASQLiteOpenFactory
-      expect(factory.waOptions.dbFilename).toBe('thunderbolt-sync.db')
+      expect(databaseOf(options).dbFilename).toBe('thunderbolt-sync.db')
     })
 
-    it('uses OPFSCoopSyncVFS when OPFS is available (default)', () => {
-      const options = getPowerSyncOptions('thunderbolt-sync.db', 'safari-tauri')
-      const factory = options.database as WASQLiteOpenFactory
-      expect(factory.waOptions.vfs).toBe(WASQLiteVFS.OPFSCoopSyncVFS)
+    it('falls back to IDBBatchAtomicVFS, syncing in the tab, when OPFS is unavailable', () => {
+      // With multi-tab on, PowerSync would open IndexedDB in a SharedWorker.
+      const database = databaseOf(getPowerSyncOptions('thunderbolt-sync.db', 'safari-tauri', false))
+      expect(database.vfs).toBe(WASQLiteVFS.IDBBatchAtomicVFS)
+      expect(database.enableMultiTabs).toBe(false)
+      expect(database.worker).toBe('/@powersync/worker.js')
     })
+  })
 
-    it('falls back to IDBBatchAtomicVFS when OPFS is unavailable', () => {
-      const options = getPowerSyncOptions('thunderbolt-sync.db', 'safari-tauri', false)
-      const factory = options.database as WASQLiteOpenFactory
-      expect(factory.waOptions.vfs).toBe(WASQLiteVFS.IDBBatchAtomicVFS)
-    })
-
-    it('keeps Tauri-safe worker wiring in the OPFS-unavailable fallback', () => {
-      const options = getPowerSyncOptions('thunderbolt-sync.db', 'safari-tauri', false)
-      const factory = options.database as WASQLiteOpenFactory
-      expect(factory.waOptions.worker).toBe('/@powersync/worker/WASQLiteDB.umd.js')
-      expect(factory.waOptions.flags?.enableMultiTabs).toBe(false)
-      expect('flags' in options && options.flags).toEqual({ enableMultiTabs: true })
-      expect(typeof (options.sync as { worker: () => unknown }).worker).toBe('function')
-    })
+  it.each([
+    ['default', true],
+    ['safari-tauri', true],
+    ['safari-tauri', false],
+  ] as const)('keeps %s database options cloneable (opfs: %p)', (config, opfsAvailable) => {
+    // PowerSync posts the database options to the sync worker; a function in them fails sync init.
+    const options = getPowerSyncOptions('thunderbolt-sync.db', config, opfsAvailable)
+    expect(() => structuredClone(options.database)).not.toThrow()
   })
 })
 
@@ -141,10 +138,10 @@ describe('waitForOwnDeviceRow', () => {
         reads.params = params
         for (const length of rowCounts) {
           reads.count++
-          yield { rows: { length } } as QueryResult
+          yield { array: Array.from({ length }, () => ({})) } as QueryResult
         }
       },
-    }) as unknown as AbstractPowerSyncDatabase
+    }) as unknown as CommonPowerSyncDatabase
 
   it("waits past empty results for this device's row", async () => {
     localStorage.setItem('thunderbolt_device_id', 'device-1')
