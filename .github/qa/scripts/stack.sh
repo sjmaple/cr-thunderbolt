@@ -11,7 +11,8 @@
 #
 #   .github/qa/scripts/stack.sh build <out-dir> [onboarding]  build the frontend (onboarding off unless asked)
 #   .github/qa/scripts/stack.sh serve <dist> [<dist>]         serve a build on 1424 (and one on 1425) until killed
-#   .github/qa/scripts/stack.sh serve dev                     Vite dev server on the working tree, backend --watch
+#   .github/qa/scripts/stack.sh serve dev                     Vite dev servers on the working tree (1424 onboarding
+#                                                             off, 1425 on), backend --watch
 #   .github/qa/scripts/stack.sh start <serve args> / stop     for CI steps: serve in the background, return once
 #                                                             ready; the pids go to $RUNNER_TEMP/qa-stack.pid and
 #                                                             qa-stack.pids
@@ -137,6 +138,7 @@ bun -e "import { createFakeGoogle } from './.github/qa/scripts/fake-google'; cre
 if [ "$2" = dev ]; then
   (cd backend && exec env "${backend_env[@]}" bun run --watch src/index.ts) &
   env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=true vite --port 1424 --strictPort &
+  env "${frontend_env[@]}" VITE_SKIP_ONBOARDING=false vite --port 1425 --strictPort &
 else
   (cd backend && exec "${backend[@]}") &
   vite preview --outDir "$2" --port 1424 --strictPort &
@@ -155,6 +157,6 @@ wait_for() {
 }
 wait_for $backend_url/v1/health
 wait_for http://localhost:1424
-if [ -n "${3:-}" ]; then wait_for http://localhost:1425; fi
+if [ "$2" = dev ] || [ -n "${3:-}" ]; then wait_for http://localhost:1425; fi
 echo "stack ready"
 wait -n

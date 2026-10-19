@@ -193,8 +193,9 @@ Serve `qa-dist-canary`, run each canary's charter into `qa-out-canary` and repla
 /tmp/qa-canaries.json`.
 
 **Fix agent:** run it in a separate checkout (it edits the working tree), with
-`.github/qa/scripts/stack.sh serve dev` from that checkout and the flags of the `fix` job. Collect the patch like
-the workflow does, then `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the
+`.github/qa/scripts/stack.sh serve dev` from that checkout (it serves the app on 1424 with onboarding skipped and on
+1425 with onboarding on, so a fix for an onboarding finding can be verified) and the flags of the `fix` job.
+Collect the patch like the workflow does, then `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the
 commit and the PR it would open.
 
 Every out dir must sit directly under the repo root: the specs import `../../../e2e/helpers`.
