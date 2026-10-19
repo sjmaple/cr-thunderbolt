@@ -187,7 +187,7 @@ describe('replay', () => {
   })
 
   test('a real-AI charter confirms at 2/3 failures and is flaky at 1/3, while other charters still need 3/3', async () => {
-    const real = 'c5-widgets-connections'
+    const real = 'c5-widgets-connections-desktop'
     for (const title of ['twice', 'once', 'never', 'always']) {
       const finding = { ...makeFinding(title, pageError), charter: real }
       await Bun.write(join(outDir, real, 'findings', `${title}.json`), JSON.stringify(finding))

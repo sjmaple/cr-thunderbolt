@@ -39,16 +39,16 @@ const isOtherRuntime = (path: string) =>
 const isDependencyFile = (path: string) => /(^|\/)(package\.json|bun\.lock|Cargo\.(toml|lock))$/.test(path)
 
 /**
- * The charter that explores a path, first match wins. c1 (it needs its own onboarding build) and c7 (sync, always
- * sensitive) get no canaries.
+ * The session that explores a path, first match wins: desktop, except for phone-only code. c1 (it needs its own
+ * onboarding build) and c7 (sync, always sensitive) get no canaries.
  */
 const charterByPath: [RegExp, string][] = [
-  [/skill|project/i, 'c4-skills-projects'],
-  [/model|provider|tinfoil/i, 'c3-models-providers'],
-  [/widget|connection|integration|mcp|artifact/i, 'c5-widgets-connections'],
-  [/setting|preference/i, 'c6-settings-data'],
-  [/mobile|keyboard/i, 'c8-phone'],
-  [/chat|^src\/(ai|acp)\//, 'c2-chat-power-user'],
+  [/skill|project/i, 'c4-skills-projects-desktop'],
+  [/model|provider|tinfoil/i, 'c3-models-providers-desktop'],
+  [/widget|connection|integration|mcp|artifact/i, 'c5-widgets-connections-desktop'],
+  [/setting|preference/i, 'c6-settings-data-desktop'],
+  [/mobile|keyboard/i, 'c2-chat-power-user-phone'],
+  [/chat|^src\/(ai|acp)\//, 'c2-chat-power-user-desktop'],
 ]
 
 /** The charter most of `paths` map to (ties go to the table's order), or undefined when none maps. */

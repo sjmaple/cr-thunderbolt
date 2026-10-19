@@ -37,17 +37,31 @@ const oracleTypes = [
   'ai-reported-failure',
 ] as const
 
+/** The platform ids of `platforms.json`. They never contain a hyphen, so a session id ends at the last one. */
+export const platformIds = platforms.map((platform) => platform.id)
+
+/** An explore session: `<charter>-<platform>`, or `free-<case>-<platform>` for a free session. */
+export type Session = { charter: string; platform: string }
+
+/** Splits a session id at its last hyphen, and throws when what follows is not a platform id. */
+export const parseSession = (session: string): Session => {
+  const cut = session.lastIndexOf('-')
+  const platform = session.slice(cut + 1)
+  if (!platformIds.includes(platform)) throw new Error(`unknown platform in session id: ${session}`)
+  return { charter: session.slice(0, cut), platform }
+}
+
 /**
- * Charters explored with the app's real AI providers, and the free session of every case on every platform
- * (`free-<case>-<platform>`). Their findings replay on a stack with the real providers too, where two failed runs in
- * three confirm one, and they never go to the fix agent, whose check runs on the fake AI. The workflow reads this set
- * to plan its legs.
+ * Sessions explored with the app's real AI providers: three charters on every platform, and the free session of
+ * every case on every platform (`free-<case>-<platform>`). Their findings replay on a stack with the real providers
+ * too, where two failed runs in three confirm one, and they never go to the fix agent, whose check runs on the fake
+ * AI. The workflow reads this set to plan its legs.
  */
 export const realAiCharters = new Set([
-  'c3-models-providers',
-  'c4-skills-projects',
-  'c5-widgets-connections',
-  ...journeys.flatMap((journey) => platforms.map((platform) => `free-${journey.id}-${platform.id}`)),
+  ...['c3-models-providers', 'c4-skills-projects', 'c5-widgets-connections'].flatMap((charter) =>
+    platformIds.map((platform) => `${charter}-${platform}`),
+  ),
+  ...journeys.flatMap((journey) => platformIds.map((platform) => `free-${journey.id}-${platform}`)),
 ])
 
 export type Area = (typeof areas)[number]
@@ -58,7 +72,7 @@ export const findingSchema = z.object({
   title: z.string().min(1),
   area: z.enum(areas),
   charter: z.string().min(1),
-  viewport: z.enum(['desktop', 'phone']),
+  viewport: z.string().refine((id) => platformIds.includes(id), 'unknown platform'),
   oracle: z.object({ type: z.enum(oracleTypes), evidence: z.string().trim().min(1) }),
   steps: z.array(z.string()).min(1),
   expected: z.string(),

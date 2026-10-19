@@ -13,6 +13,8 @@ import {
   hasOracle,
   lintReproSpec,
   loadFindings,
+  parseSession,
+  platformIds,
   type RawFinding,
   realAiCharters,
   severity,
@@ -272,10 +274,32 @@ test('each charter names exactly the functions of its list, and says the AI is r
     const text = await Bun.file(join(import.meta.dir, `../charters/${charter}.md`)).text()
     const named = [...text.matchAll(/Functions?:((?:\s+`[\w-]+`[,.]?)+)/g)].flatMap(([, ids]) => ids.match(/[\w-]+/g))
     expect([...new Set(named)].sort(), charter).toEqual(list.map((fn) => fn.id).sort())
-    expect(text.includes('the AI is **real**'), charter).toBe(realAiCharters.has(charter))
+    const real = platformIds.map((platform) => realAiCharters.has(`${charter}-${platform}`))
+    // A charter is real AI on every platform or on none.
+    expect(text.includes('the AI is **real**'), charter).toBe(real.every(Boolean))
+    expect(new Set(real).size, charter).toBe(1)
   }
-  const charters = [...realAiCharters].filter((charter) => !charter.startsWith('free-'))
+  const charters = [...realAiCharters]
+    .map((session) => parseSession(session).charter)
+    .filter((c) => !c.startsWith('free-'))
   expect(charters.filter((charter) => !(charter in lists))).toEqual([])
+})
+
+test('parseSession splits the platform off the last hyphen', () => {
+  expect(parseSession('c1-first-run-phone')).toEqual({ charter: 'c1-first-run', platform: 'phone' })
+  expect(parseSession('free-trip-planner-desktop')).toEqual({ charter: 'free-trip-planner', platform: 'desktop' })
+  expect(() => parseSession('c1-first-run')).toThrow('unknown platform in session id: c1-first-run')
+})
+
+test('real-AI sessions carry their platform', () => {
+  expect(realAiCharters.has('c3-models-providers-phone')).toBe(true)
+  expect(realAiCharters.has('c3-models-providers')).toBe(false)
+  expect(realAiCharters.has('c2-chat-power-user-desktop')).toBe(false)
+})
+
+test('a finding names a known platform', () => {
+  expect(findingSchema.safeParse({ ...finding, viewport: 'phone' }).success).toBe(true)
+  expect(findingSchema.safeParse({ ...finding, viewport: 'tablet' }).success).toBe(false)
 })
 
 test('every free session is real AI, on a platform whose id is a finding viewport, and every case is complete', async () => {

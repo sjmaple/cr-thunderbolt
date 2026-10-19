@@ -10,7 +10,7 @@ import { parseArgs } from 'node:util'
 import { z } from 'zod'
 import type { Canary } from './canaries'
 import { type Filed, sanitize, type Scorecard } from './file-findings'
-import { type FindingFile, loadFindings, realAiCharters } from './findings'
+import { type FindingFile, loadFindings, parseSession, realAiCharters } from './findings'
 import type { Verified, VerifiedFinding } from './verify'
 
 type Stop = 'done' | 'max_budget' | 'max_turns' | 'timeout' | 'error'
@@ -595,7 +595,11 @@ export const runSummary = async (
     const attempts = await loadAttempts(dir)
     // A free session has no list: each name it gave its own attempts counts as one function.
     const tried = new Set(attempts.flatMap((f) => (f.attempt ? [f.attempt.function] : [])))
-    const list = isFree(s.charter) ? [...tried].map((id) => ({ id, outcome: 'tried' })) : functions.get(s.charter)
+    const list = isFree(s.charter)
+      ? [...tried].map((id) => ({ id, outcome: 'tried' }))
+      : isFix(s)
+        ? undefined
+        : functions.get(parseSession(s.charter).charter)
     if (list) {
       // A save step cut short can leave a broken file: that session has no transcript.
       const transcript = await readJson<TranscriptMessage[]>(join(dir, 'transcript.json')).catch(() => undefined)

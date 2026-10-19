@@ -213,7 +213,7 @@ describe('route', () => {
   })
 
   test('a real-AI finding goes to a person even in a fixable area: the fix check runs on the fake AI', async () => {
-    const charterDir = 'c5-widgets-connections'
+    const charterDir = 'c5-widgets-connections-desktop'
     const filed: Filed[] = [{ fp: 'fp-real', charterDir, id: '1', severity: 'High', action: 'created' }]
     const confirmed: VerifiedFinding[] = [
       { charterDir, id: '1', finding: finding('chat'), replay: { failed: 2, runs: 3 }, artifacts: {} },

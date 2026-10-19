@@ -385,7 +385,9 @@ describe('renderReport findings and caps', () => {
   })
 
   it('says app-provider spend is not measured only when a real-AI charter ran', () => {
-    expect(render(emptyVerified, 'c5-widgets-connections')).toContain('App providers (real-AI charters): not measured.')
+    expect(render(emptyVerified, 'c5-widgets-connections-desktop')).toContain(
+      'App providers (real-AI charters): not measured.',
+    )
     expect(render(emptyVerified)).not.toContain('App providers')
   })
 })
@@ -567,16 +569,18 @@ describe('checkCoverage', () => {
     const transcript = transcriptOf([browser('click'), browser('snapshot', 'Skill Alpha One'), record('1')])
     const files = [attempt('1', 'done', 'failed', 'Skill Alpha One'), attempt('2', 'blocked', 'blocked', 'no control')]
     const report = renderReport({
-      sessions: [session({ charter: 'c4' }), session({ charter: 'c8' })],
+      sessions: [session({ charter: 'c4-skills-projects-phone' }), session({ charter: 'c4-skills-projects-desktop' })],
       coverage: new Map([
-        ['c4', checkCoverage(fns('done', 'blocked', 'missing'), files, transcript)],
-        ['c8', checkCoverage(fns('done'), files)],
+        ['c4-skills-projects-phone', checkCoverage(fns('done', 'blocked', 'missing'), files, transcript)],
+        ['c4-skills-projects-desktop', checkCoverage(fns('done'), files)],
       ]),
       found: [],
     })
-    expect(report).toContain('- **c4**: 1/3 covered; failed: done; blocked: blocked; unattempted: missing\n')
     expect(report).toContain(
-      '- **c8**: 0/1 covered, **no transcript** (2 records unchecked); unsupported: done; ' +
+      '- **c4-skills-projects-phone**: 1/3 covered; failed: done; blocked: blocked; unattempted: missing\n',
+    )
+    expect(report).toContain(
+      '- **c4-skills-projects-desktop**: 0/1 covered, **no transcript** (2 records unchecked); unsupported: done; ' +
         'unknown function ids: blocked\n',
     )
   })
@@ -586,25 +590,31 @@ describe('runSummary', () => {
   it('reads attempt records and the transcript of each session against functions.json', async () => {
     const qaDir = join(dir, 'qa')
     const outDir = join(dir, 'out')
-    await mkdir(join(outDir, 'c4/attempts'), { recursive: true })
+    const phone = 'c4-skills-projects-phone'
+    const desktop = 'c4-skills-projects-desktop'
+    await mkdir(join(outDir, phone, 'attempts'), { recursive: true })
     await mkdir(qaDir)
     const list = [{ id: 'skill-create', outcome: 'shows' }]
-    await writeFile(join(qaDir, 'functions.json'), JSON.stringify({ c4: list, c8: list }))
-    await writeFile(join(outDir, 'c4/session.json'), JSON.stringify(session({ charter: 'c4' })))
+    // The list belongs to the charter: every platform's session reads it.
+    await writeFile(join(qaDir, 'functions.json'), JSON.stringify({ 'c4-skills-projects': list }))
+    await writeFile(join(outDir, phone, 'session.json'), JSON.stringify(session({ charter: phone })))
     // A save step cut short: the transcript is broken, and that session counts as having none.
-    await mkdir(join(outDir, 'c8'))
-    await writeFile(join(outDir, 'c8/session.json'), JSON.stringify(session({ charter: 'c8' })))
-    await writeFile(join(outDir, 'c8/transcript.json'), '[{"message":')
+    await mkdir(join(outDir, desktop))
+    await writeFile(join(outDir, desktop, 'session.json'), JSON.stringify(session({ charter: desktop })))
+    await writeFile(join(outDir, desktop, 'transcript.json'), '[{"message":')
+    // A fix session has no function list and must not be read as a platform session.
+    await mkdir(join(outDir, 'fix-ab12cd34'))
+    await writeFile(join(outDir, 'fix-ab12cd34/session.json'), JSON.stringify(session({ charter: 'fix-ab12cd34' })))
     const observed = 'button "Skill Alpha One"'
     await writeFile(
-      join(outDir, 'c4/attempts/1.json'),
+      join(outDir, phone, 'attempts/1.json'),
       JSON.stringify({ function: 'skill-create', setup: 's', action: 'a', expected: 'e', observed, status: 'passed' }),
     )
-    await writeFile(join(outDir, 'c4/attempts/2.json'), '{ not json')
+    await writeFile(join(outDir, phone, 'attempts/2.json'), '{ not json')
     const steps = [
       ['mcp__playwright__browser_click', 'ok'],
       ['mcp__playwright__browser_snapshot', observed],
-      ['Write', 'ok', join(outDir, 'c4/attempts/1.json')],
+      ['Write', 'ok', join(outDir, phone, 'attempts/1.json')],
     ]
     const transcript = steps.flatMap(([name, content, path], i) => [
       {
@@ -613,7 +623,7 @@ describe('runSummary', () => {
       },
       { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `t${i}`, content }] } },
     ])
-    await writeFile(join(outDir, 'c4/transcript.json'), JSON.stringify(transcript))
+    await writeFile(join(outDir, phone, 'transcript.json'), JSON.stringify(transcript))
     // A free session has no list: its attempts' own names are what it tried.
     const free = 'free-phone-commuter-phone'
     await mkdir(join(outDir, free, 'attempts'), { recursive: true })
@@ -633,9 +643,10 @@ describe('runSummary', () => {
 
     const { report } = await runSummary(outDir, qaDir, stepSummary)
 
-    expect(report).toContain('- **c4**: 1/1 covered; invalid records: 2\n')
+    expect(report).toContain('- **c4-skills-projects-phone**: 1/1 covered; invalid records: 2\n')
+    expect(report).not.toContain('fix-ab12cd34**:')
     expect(report).toContain(
-      '- **c8**: 0/1 covered, **no transcript** (0 records unchecked); unattempted: skill-create',
+      '- **c4-skills-projects-desktop**: 0/1 covered, **no transcript** (0 records unchecked); unattempted: skill-create',
     )
     expect(report.split('## Free session')[1]).toContain(
       '- **free-phone-commuter-phone**: tried 1, **no transcript** (1 records unchecked); unsupported: photo-question',
