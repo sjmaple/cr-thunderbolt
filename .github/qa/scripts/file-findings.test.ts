@@ -33,7 +33,15 @@ type Handlers = {
 }
 
 type Input = { title: string; stateId: string; labelIds: string[]; description: string; priority: number }
-type Vars = { needle?: string; body?: string; headers?: Record<string, string>; input?: Input }
+type Vars = {
+  needle?: string
+  body?: string
+  headers?: Record<string, string>
+  input?: Input
+  label?: string
+  contentType?: string
+  filename?: string
+}
 
 /** A function usable as `fetch` (adds the `preconnect` member Bun's type requires). */
 const asFetch = (fn: (url: string | URL | Request, init?: RequestInit) => Promise<Response>): typeof fetch =>
@@ -53,14 +61,16 @@ const fakeLinear = (handlers: Handlers = {}) => {
     const data = (() => {
       if (op === 'Teams') return { teams: { nodes: [{ id: 't1', name: 'Thunderbolt' }] } }
       if (op === 'QaSetup') {
-        const names = handlers.labels ?? ['qa-agent', 'Bug', 'Security']
+        const names = handlers.labels ?? ['qa-agent', 'Bug', 'Security', 'Human Required']
         return {
           workflowStates: { nodes: handlers.triage === false ? [] : [{ id: 'triage-id' }] },
           issueLabels: { nodes: names.map((name) => ({ id: `l-${name}`, name, team: null })) },
         }
       }
       if (op === 'Dedupe') return { issues: { nodes: handlers.existing?.[variables.needle ?? ''] ?? [] } }
-      if (op === 'Scorecard') return { issues: { nodes: handlers.scorecard ?? [] } }
+      if (op === 'Scorecard') {
+        return { issues: { nodes: variables.label === 'qa-agent' ? (handlers.scorecard ?? []) : [] } }
+      }
       if (op === 'CreateIssue') {
         const n = ops.filter((o) => o.op === 'CreateIssue').length
         return { issueCreate: { success: true, issue: { id: `i${n}`, identifier: `THB-${n}`, url: `https://l/${n}` } } }
@@ -72,7 +82,7 @@ const fakeLinear = (handlers: Handlers = {}) => {
             success: true,
             uploadFile: {
               uploadUrl: 'https://upload.test/x',
-              assetUrl: 'https://uploads.linear.app/a/video.webm',
+              assetUrl: `https://uploads.linear.app/a/${variables.filename}`,
               headers: [{ key: 'x-goog-meta', value: 'v' }],
             },
           },
@@ -93,18 +103,41 @@ const fakeLinear = (handlers: Handlers = {}) => {
 const created = (api: ReturnType<typeof fakeLinear>): Input[] =>
   api.ops.flatMap((o) => (o.op === 'CreateIssue' && o.variables.input ? [o.variables.input] : []))
 
+/** Variables of every fileUpload the fake saw, `contentType` included. */
+const uploads = (api: ReturnType<typeof fakeLinear>): Vars[] =>
+  api.ops.flatMap((o) => (o.op === 'FileUpload' ? [o.variables] : []))
+
+/** The smallest bytes `verify.ts` reads as a 16x16 PNG, and as a 16x16 JPEG. */
+const png = Buffer.from('89504e470d0a1a0a0000000d494844520000001000000010', 'hex')
+const jpeg = Buffer.from('ffd8ffc000110800100010', 'hex')
+
+/** A visual finding: a screenshot instead of a repro spec. */
+const visualVerified = (fields: Partial<RawFinding> = {}): Partial<RawFinding> => ({
+  area: 'layout',
+  oracle: { type: 'visual', evidence: 'The Continue button sits under the cookie banner' },
+  element: 'button "Continue"',
+  function: 'onboarding-name',
+  screenshot: 'mcp/page-1.png',
+  repro_spec: undefined,
+  ...fields,
+})
+
 let outDir: string
 beforeEach(async () => {
   outDir = await mkdtemp(join(tmpdir(), 'qa-file-'))
 })
 afterEach(() => rm(outDir, { recursive: true, force: true }))
 
-/** Write verified.json with these findings (plus their repro specs) as confirmed. */
+/** Write verified.json with these findings (plus their repro specs, and a PNG per screenshot) as confirmed. */
 const writeVerified = async (findings: Partial<RawFinding>[], video?: string, charterDir = 'c2-chat') => {
   const confirmed = []
   for (const [i, fields] of findings.entries()) {
     const finding = { ...base, ...fields }
     await mkdir(join(outDir, charterDir, 'repro'), { recursive: true })
+    if (finding.screenshot) {
+      await mkdir(join(outDir, charterDir, 'mcp'), { recursive: true })
+      await writeFile(join(outDir, charterDir, finding.screenshot), png)
+    }
     if (finding.repro_spec) {
       await writeFile(
         join(outDir, charterDir, finding.repro_spec),
@@ -346,7 +379,79 @@ describe('video', () => {
     await run(api.fetchFn)
     expect(api.ops.find((o) => o.op === 'PUT')?.variables.headers).toMatchObject({ 'x-goog-meta': 'v' })
     const [input] = created(api)
-    expect(input.description).toContain('https://uploads.linear.app/a/video.webm')
+    expect(input.description).toContain('https://uploads.linear.app/a/v.webm')
+    expect(uploads(api)[0].contentType).toBe('video/webm')
+  })
+})
+
+describe('one ticket per bug across platforms', () => {
+  test('the same bug on desktop and phone files one ticket listing both', async () => {
+    await writeVerified([{ viewport: 'desktop' }, { viewport: 'phone' }])
+    const api = fakeLinear()
+    const filed = await run(api.fetchFn, { live: true })
+    expect(created(api)).toHaveLength(1)
+    expect(created(api)[0].description).toContain('**Platforms:** desktop, phone')
+    expect(filed.map((f) => [f.id, f.action, f.identifier])).toEqual([
+      ['0', 'created', 'THB-1'],
+      ['1', 'created', 'THB-1'],
+    ])
+  })
+
+  test('a bug on a new platform, with its ticket open, comments once with the platforms in platform order', async () => {
+    await writeVerified([{ viewport: 'phone' }, { viewport: 'desktop' }])
+    const open = { id: 'o', identifier: 'THB-9', url: 'https://l/9', completedAt: null, state: { type: 'started' } }
+    const api = fakeLinear({ existing: { [`[qa:${fp({})}]`]: [open] } })
+    const filed = await run(api.fetchFn)
+    const comments = api.ops.filter((o) => o.op === 'Comment')
+    expect(comments).toHaveLength(1)
+    expect(comments[0].variables.body).toContain('**Platforms:** desktop, phone')
+    expect(filed.map((f) => [f.action, f.identifier])).toEqual([
+      ['commented', 'THB-9'],
+      ['commented', 'THB-9'],
+    ])
+  })
+})
+
+describe('visual findings', () => {
+  test('a visual ticket is Human Required and shows its screenshot', async () => {
+    await writeVerified([visualVerified({ screenshot: 'mcp/page-1.png' })])
+    const api = fakeLinear({ labels: ['qa-agent', 'Bug', 'Security', 'Human Required'] })
+    await run(api.fetchFn, { live: true })
+    expect(created(api)[0].labelIds).toContain('l-Human Required')
+    expect(uploads(api)[0].contentType).toBe('image/png')
+    expect(created(api)[0].description).toContain('![Screenshot](https://uploads.linear.app/a/page-1.png)')
+  })
+
+  test("the screenshot's content type comes from its bytes, not its name", async () => {
+    await writeVerified([visualVerified({ screenshot: 'mcp/page-1.png' })])
+    await writeFile(join(outDir, 'c2-chat', 'mcp', 'page-1.png'), jpeg)
+    const api = fakeLinear()
+    await run(api.fetchFn)
+    expect(uploads(api)[0].contentType).toBe('image/jpeg')
+    expect(api.ops.find((o) => o.op === 'PUT')?.variables.headers).toMatchObject({ 'content-type': 'image/jpeg' })
+  })
+
+  test('a screenshot that is not a PNG or JPEG is never uploaded', async () => {
+    await writeVerified([visualVerified({ screenshot: 'mcp/page-1.png' })])
+    await writeFile(join(outDir, 'c2-chat', 'mcp', 'page-1.png'), '<svg onload="x()">')
+    const api = fakeLinear()
+    await expect(run(api.fetchFn)).rejects.toThrow('not a PNG, JPEG or WebM file')
+    expect(uploads(api)).toEqual([])
+  })
+
+  test('a security visual finding uploads no screenshot', async () => {
+    await writeVerified([visualVerified({ area: 'security', screenshot: 'mcp/page-1.png' })])
+    const api = fakeLinear({ labels: ['qa-agent', 'Bug', 'Security', 'Human Required'] })
+    await run(api.fetchFn, { live: true })
+    expect(created(api)).toHaveLength(1)
+    expect(uploads(api)).toEqual([])
+  })
+
+  test('a visual finding without an element is refused', async () => {
+    await writeVerified([visualVerified({ element: undefined })])
+    expect(await run(fakeLinear().fetchFn)).toMatchObject([
+      { action: 'refused', reason: 'visual finding without an element to deduplicate on' },
+    ])
   })
 })
 
@@ -354,15 +459,15 @@ describe('setup errors', () => {
   test('missing labels fail with the list', async () => {
     await writeVerified([{}])
     await expect(run(fakeLinear({ labels: ['Bug'] }).fetchFn)).rejects.toThrow(
-      'Missing Linear labels: qa-agent, Security',
+      'Missing Linear labels: qa-agent, Security, Human Required',
     )
   })
 
   test('a lowercase security label does not count as Security', async () => {
     await writeVerified([{}])
-    await expect(run(fakeLinear({ labels: ['qa-agent', 'Bug', 'security'] }).fetchFn)).rejects.toThrow(
-      'Missing Linear labels: Security',
-    )
+    await expect(
+      run(fakeLinear({ labels: ['qa-agent', 'Bug', 'security', 'Human Required'] }).fetchFn),
+    ).rejects.toThrow('Missing Linear labels: Security')
   })
 
   test('no Triage state fails loudly', async () => {

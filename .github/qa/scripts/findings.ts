@@ -372,10 +372,18 @@ const signature = (evidence: string) =>
     .trim()
     .slice(0, 200)
 
-/** Dedupe key for "the same bug" across runs: sha256(area|oracle type|normalized evidence), first 8 hex chars. */
+/**
+ * Dedupe key for "the same bug" across runs and platforms, first 8 hex chars of a sha256:
+ * `area|oracle type|normalized evidence`, or `area|visual|function|normalized element` for a visual finding, whose
+ * evidence is the model's own description and changes wording from one week to the next.
+ */
 export const fingerprint = (finding: RawFinding) =>
   createHash('sha256')
-    .update(`${finding.area}|${finding.oracle.type}|${signature(finding.oracle.evidence)}`)
+    .update(
+      finding.oracle.type === 'visual'
+        ? `${finding.area}|visual|${finding.function ?? ''}|${signature(finding.element ?? '')}`
+        : `${finding.area}|${finding.oracle.type}|${signature(finding.oracle.evidence)}`,
+    )
     .digest('hex')
     .slice(0, 8)
 

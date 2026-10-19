@@ -142,7 +142,7 @@ const jpegSize = (bytes: Buffer) => {
 }
 
 /** The media type and size an image's own bytes declare, whatever its name says; undefined unless PNG or JPEG. */
-const imageInfo = (bytes: Buffer): ImageInfo | undefined => {
+export const imageInfo = (bytes: Buffer): ImageInfo | undefined => {
   if (bytes.length >= 24 && bytes.subarray(0, 8).equals(pngSignature)) {
     return { mediaType: 'image/png', width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
   }
@@ -152,9 +152,10 @@ const imageInfo = (bytes: Buffer): ImageInfo | undefined => {
 
 /**
  * A visual finding's screenshot under `outDir`. The charter dir and the model-written path are checked on every
- * read: no finding, and no edited candidates file, can make replay or the judge read a file outside the session dir.
+ * read: no finding, and no edited candidates or verified file, can make replay, the judge or filing read a file
+ * outside the session dir.
  */
-const screenshotPath = (outDir: string, file: FindingFile) => {
+export const screenshotPath = (outDir: string, file: FindingFile) => {
   if (!/^[\w-]+$/.test(file.charterDir)) throw new Error(`not a session dir: ${file.charterDir}`)
   return join(outDir, file.charterDir, screenshotFile.parse(file.finding.screenshot))
 }

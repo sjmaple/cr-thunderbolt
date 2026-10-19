@@ -86,8 +86,13 @@ code from. The fallback is a checkout the job's user cannot write during replay.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot. The default answer is drop. Writes `verified.json`.
 5. **file** (`file-findings.ts`): fingerprint dedupe, severity table, ticket caps and roll-ups, secret refusal.
-   Dry run unless `--live`.
-6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 fake-AI tickets in fixable areas. The original spec
+   Dry run unless `--live`. The fingerprint ignores the platform, so findings that share one become one ticket
+   whose `**Platforms:**` line lists every platform that found the bug, and an open ticket gets one comment with
+   that line. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
+   wording; one without an element is refused. Its ticket carries `Human Required` and embeds the screenshot,
+   uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
+6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 fake-AI tickets in fixable areas, one per
+   fingerprint, and never a `visual` one, which has no spec to pass. The original spec
    must pass 3 times on the patch before `publish` opens a draft PR on `qa-fix/<fp>`; otherwise the ticket gets
    `Human Required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
 7. **report** (`report.ts summary`): the job summary.
@@ -308,7 +313,8 @@ secret would be used without warning. `notify` uses the existing repository secr
 Team Thunderbolt needs these labels, or the filer stops and lists the missing ones:
 
 - `qa-agent`, `Bug`, `Security` (filing)
-- `Human Required` (tickets the fix agent must not touch)
+- `Human Required` (tickets the fix agent must not touch; filing puts it on every `visual` ticket, and the fix
+  step on the tickets it hands to a person)
 - `qa:valid`, `qa:not-a-bug`, `qa:duplicate`, `qa:env-artifact` (triage; the scorecard reads them to compute
   precision, and filing falls back to a dry run while precision stays under 70% over 8+ triaged tickets that are
   not duplicates)

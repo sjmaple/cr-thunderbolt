@@ -5,11 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { readFile, writeFile } from 'node:fs/promises'
-import { basename, isAbsolute, join } from 'node:path'
+import { basename, extname, isAbsolute, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { linear } from '../../../scripts/notify-on-failure'
-import { type Finding, findingSchema, fingerprint, type Severity, severity } from './findings'
-import type { Verified, VerifiedFinding } from './verify'
+import { type Finding, findingSchema, fingerprint, platformIds, type Severity, severity } from './findings'
+import { imageInfo, screenshotPath, type Verified, type VerifiedFinding } from './verify'
 
 export type Action = 'created' | 'commented' | 'regression' | 'suppressed' | 'rolled-up' | 'refused' | 'dry-run'
 /** What a live run would send to Linear. */
@@ -44,7 +44,7 @@ export const qaLabels = {
   security: 'Security',
   humanRequired: 'Human Required',
 } as const
-const requiredLabels = [qaLabels.agent, qaLabels.bug, qaLabels.security]
+const requiredLabels = [qaLabels.agent, qaLabels.bug, qaLabels.security, qaLabels.humanRequired]
 const triageLabels = ['qa:valid', 'qa:not-a-bug', 'qa:duplicate', 'qa:env-artifact'] as const
 const brakeMinLabelled = 8
 const brakeMinPrecision = 0.7
@@ -68,12 +68,12 @@ export const computeScorecard = async (fetchFn: typeof fetch, key: string): Prom
   const { issues } = await linear<{ issues: { nodes: { labels: { nodes: { name: string }[] } }[] } }>(
     fetchFn,
     key,
-    `query Scorecard($since: DateTimeOrDuration!) {
-      issues(first: 250, includeArchived: true, filter: { labels: { some: { name: { eq: "qa-agent" } } }, createdAt: { gte: $since } }) {
+    `query Scorecard($since: DateTimeOrDuration!, $label: String!) {
+      issues(first: 250, includeArchived: true, filter: { labels: { some: { name: { eq: $label } } }, createdAt: { gte: $since } }) {
         nodes { labels { nodes { name } } }
       }
     }`,
-    { since: '-P28D' },
+    { since: '-P28D', label: qaLabels.agent },
   )
   const [valid, notABug, duplicate, envArtifact] = triageLabels.map(
     (label) => issues.nodes.filter((issue) => issue.labels.nodes.some((l) => l.name === label)).length,
@@ -214,11 +214,17 @@ export const addComment = async ({ fetchFn, key }: LinearAuth, issueId: string, 
   if (!commentCreate.success) throw new Error('Linear did not add the comment')
 }
 
-/** Upload a replay video to Linear storage and return its asset URL; undefined when the file is missing. */
-const uploadVideo = async (ctx: Ctx, path: string): Promise<string | undefined> => {
+/**
+ * Upload a replay video or a screenshot to Linear storage and return its asset URL; undefined when the file is
+ * missing. The model chose the screenshot, so the content type comes from the bytes, never from the name.
+ */
+const uploadAsset = async (ctx: Ctx, path: string): Promise<string | undefined> => {
   const file = Bun.file(path)
   if (!(await file.exists())) return undefined
-  const contentType = file.type.split(';')[0] || 'video/webm'
+  const bytes = Buffer.from(await file.arrayBuffer())
+  // Playwright records every replay video as WebM.
+  const contentType = imageInfo(bytes)?.mediaType ?? (extname(path) === '.webm' ? 'video/webm' : undefined)
+  if (!contentType) throw new Error(`not a PNG, JPEG or WebM file: ${basename(path)}`)
   const { fileUpload } = await linear<{
     fileUpload: {
       success: boolean
@@ -230,9 +236,9 @@ const uploadVideo = async (ctx: Ctx, path: string): Promise<string | undefined> 
     `mutation FileUpload($contentType: String!, $filename: String!, $size: Int!) {
       fileUpload(contentType: $contentType, filename: $filename, size: $size) { success uploadFile { uploadUrl assetUrl headers { key value } } }
     }`,
-    { contentType, filename: basename(path), size: file.size },
+    { contentType, filename: basename(path), size: bytes.length },
   )
-  if (!fileUpload.success) throw new Error('Linear did not prepare the video upload')
+  if (!fileUpload.success) throw new Error('Linear did not prepare the upload')
   const { uploadUrl, assetUrl, headers } = fileUpload.uploadFile
   const response = await ctx
     .fetchFn(uploadUrl, {
@@ -242,18 +248,30 @@ const uploadVideo = async (ctx: Ctx, path: string): Promise<string | undefined> 
         'Cache-Control': 'public, max-age=31536000',
         ...Object.fromEntries(headers.map((h) => [h.key, h.value])),
       },
-      body: file,
+      body: bytes,
     })
     .catch(() => {
-      throw new Error('Linear video upload request failed')
+      throw new Error('Linear upload request failed')
     })
-  if (!response.ok) throw new Error(`Linear video upload HTTP ${response.status}`)
+  if (!response.ok) throw new Error(`Linear upload HTTP ${response.status}`)
   return assetUrl
 }
 
 // ---------- ticket text ----------
 
-type Entry = { v: VerifiedFinding; f: Finding; fp: string; sev: Severity }
+/**
+ * One bug: the confirmed findings of a run that share a fingerprint, filed as one ticket. `v` and `f` are the most
+ * severe of them and give the ticket its text; `group` holds them all, and each gets the same action and ticket.
+ */
+type Entry = {
+  v: VerifiedFinding
+  f: Finding
+  fp: string
+  sev: Severity
+  /** The group's platforms, in `platforms.json` order. */
+  platforms: string[]
+  group: VerifiedFinding[]
+}
 /** Findings over their kind's ticket cap, rolled up into one ticket per kind. */
 type Overflow = { bug: Entry[]; security: Entry[] }
 
@@ -280,16 +298,16 @@ export const ticketView = (f: Finding, runUrl?: string) => {
  * what the model wrote, so a free session's ticket always names its case and platform (`free-<case>-<platform>`).
  */
 const buildBody = (
-  { v, f, sev }: Entry,
+  { v, f, sev, platforms }: Entry,
   spec: string,
-  extra: { runUrl?: string; sha?: string; videoUrl?: string; regressionOf?: Existing },
+  extra: { runUrl?: string; sha?: string; videoUrl?: string; screenshotUrl?: string; regressionOf?: Existing },
 ): string => {
   const runUrl = f.area === 'security' ? undefined : extra.runUrl
   const view = ticketView(f, runUrl)
   return [
     extra.regressionOf &&
       `Regression: previously fixed in ${extra.regressionOf.identifier} (${extra.regressionOf.url})`,
-    `**Area:** ${f.area} · **Severity:** ${sev} · **Viewport:** ${f.viewport} · **Charter:** ${sanitize(v.charterDir, 60, runUrl)}`,
+    `**Area:** ${f.area} · **Severity:** ${sev} · ${platformsLine(platforms)} · **Charter:** ${sanitize(v.charterDir, 60, runUrl)}`,
     extra.sha && `**Commit:** ${extra.sha}`,
     runUrl && `**Run:** ${runUrl}`,
     '## Steps',
@@ -298,11 +316,14 @@ const buildBody = (
     `## Actual\n${view.actual}`,
     `## Oracle: ${f.oracle.type}\n\`\`\`\n${view.oracle.evidence}\n\`\`\``,
     spec && `## Repro spec\n\`\`\`ts\n${sanitize(spec, 6000, runUrl)}\n\`\`\``,
+    extra.screenshotUrl && `![Screenshot](${extra.screenshotUrl})`,
     extra.videoUrl && `[Replay video](${extra.videoUrl})`,
   ]
     .filter(Boolean)
     .join('\n\n')
 }
+
+const platformsLine = (platforms: string[]) => `**Platforms:** ${platforms.join(', ')}`
 
 const videoPath = (outDir: string, video: string) =>
   isAbsolute(video) || video.startsWith(outDir) ? video : join(outDir, video)
@@ -341,32 +362,43 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   if (!ctx) log('No LINEAR_API_KEY: skipping Linear lookups, treating every finding as new.')
 
   const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
-  const entries: Entry[] = verified.confirmed.map((v) => {
-    const f = findingSchema.parse(v.finding)
-    return { v, f, fp: fingerprint(v.finding), sev: severity(f) }
-  })
-  entries.sort((a, b) => priority[a.sev] - priority[b.sev] || a.fp.localeCompare(b.fp))
-
   const filed: Filed[] = []
+  const scored = verified.confirmed.flatMap((v) => {
+    const f = findingSchema.parse(v.finding)
+    const found = { v, f, fp: fingerprint(v.finding), sev: severity(f) }
+    if (f.oracle.type !== 'visual' || f.element) return [found]
+    const reason = 'visual finding without an element to deduplicate on'
+    filed.push({ fp: found.fp, severity: found.sev, charterDir: v.charterDir, id: v.id, action: 'refused', reason })
+    return []
+  })
+  scored.sort((a, b) => priority[a.sev] - priority[b.sev] || a.fp.localeCompare(b.fp))
+  const entries: Entry[] = [...Map.groupBy(scored, (s) => s.fp).values()].map((group) => ({
+    ...group[0],
+    platforms: platformIds.filter((id) => group.some((s) => s.f.viewport === id)),
+    group: group.map((s) => s.v),
+  }))
+
   const opened = { bug: 0, security: 0 }
   const overflow: Overflow = { bug: [], security: [] }
-  const baseOf = ({ v, fp, sev }: Entry) => ({ fp, severity: sev, charterDir: v.charterDir, id: v.id })
+  /** One `filed.json` line per finding of the entry's group, all with the same outcome. */
+  const record = ({ group, fp, sev }: Entry, outcome: Omit<Filed, 'fp' | 'severity' | 'charterDir' | 'id'>) =>
+    filed.push(...group.map((v) => ({ fp, severity: sev, charterDir: v.charterDir, id: v.id, ...outcome })))
   /**
    * Records a mutation: performed when live. A dry run logs one line without the ticket text, since the job log
    * is public, and keeps the text as `preview` in `filed.json` unless the finding is a security one.
    */
-  const act = async (entry: Entry, would: Action, preview: Preview, run: (ctx: Ctx) => Promise<Partial<Filed>>) => {
+  const act = async (
+    entry: Entry,
+    would: Action,
+    preview: Preview,
+    run: (ctx: Ctx) => Promise<Omit<Filed, 'fp' | 'severity' | 'charterDir' | 'id' | 'action'>>,
+  ) => {
     if (!live || !ctx) {
       log(`[dry run] would ${would} ${entry.fp} (${entry.sev})`)
-      filed.push({
-        ...baseOf(entry),
-        action: 'dry-run',
-        would,
-        preview: entry.f.area === 'security' ? undefined : preview,
-      })
+      record(entry, { action: 'dry-run', would, preview: entry.f.area === 'security' ? undefined : preview })
       return
     }
-    filed.push({ ...baseOf(entry), action: would, ...(await run(ctx)) })
+    record(entry, { action: would, ...(await run(ctx)) })
   }
 
   /** One roll-up ticket per kind over its cap. A security roll-up lists fingerprints only and has no run link. */
@@ -386,10 +418,11 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
     const issue = live && ctx ? await createIssue(ctx, title, description, rest[0].sev, labels) : undefined
     if (!issue) log(`[dry run] would create the roll-up "${title}"`)
     for (const entry of rest) {
-      filed.push(
+      record(
+        entry,
         issue
-          ? { ...baseOf(entry), action: 'rolled-up', issueId: issue.id, identifier: issue.identifier, url: issue.url }
-          : { ...baseOf(entry), action: 'dry-run', would: 'rolled-up' },
+          ? { action: 'rolled-up', issueId: issue.id, identifier: issue.identifier, url: issue.url }
+          : { action: 'dry-run', would: 'rolled-up' },
       )
     }
   }
@@ -397,20 +430,21 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   try {
     for (const entry of entries) {
       const { v, f, fp, sev } = entry
-      // A visual finding has a screenshot instead of a spec.
+      // A visual finding has a screenshot instead of a spec. Only this finding's text reaches Linear; the rest of
+      // its group adds platform ids, which the schema checked.
       const spec = f.repro_spec ? await readFile(join(outDir, v.charterDir, f.repro_spec), 'utf8') : ''
       if (secretPattern.test(modelText(f, spec))) {
-        filed.push({ ...baseOf(entry), action: 'refused', reason: 'secret pattern in model-written text' })
+        record(entry, { action: 'refused', reason: 'secret pattern in model-written text' })
         continue
       }
       const decision: Decision = ctx ? await decide(ctx, fp, now) : { kind: 'new' }
       if (decision.kind === 'suppressed') {
-        filed.push({ ...baseOf(entry), action: 'suppressed', reason: 'a canceled ticket carries this fingerprint' })
+        record(entry, { action: 'suppressed', reason: 'a canceled ticket carries this fingerprint' })
         continue
       }
       if (decision.kind === 'commented') {
         const link = f.area === 'security' || !runUrl ? '' : `: ${runUrl}`
-        const body = `Seen again in a QA run${link}`
+        const body = `Seen again in a QA run${link}\n\n${platformsLine(entry.platforms)}`
         await act(entry, 'commented', { issue: decision.issue.identifier, body }, async (ctx) => {
           await addComment(ctx, decision.issue.id, body)
           return { issueId: decision.issue.id, identifier: decision.issue.identifier, url: decision.issue.url }
@@ -424,13 +458,23 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
       }
       opened[kind]++
       const regressionOf = decision.kind === 'regression' ? decision.issue : undefined
-      const names = [qaLabels.agent, qaLabels.bug, ...(f.area === 'security' ? [qaLabels.security] : [])]
+      const visual = f.oracle.type === 'visual'
+      // A visual finding has no spec for the fix agent to pass, so a person takes it from the start.
+      const names = [
+        qaLabels.agent,
+        qaLabels.bug,
+        ...(f.area === 'security' ? [qaLabels.security] : []),
+        ...(visual ? [qaLabels.humanRequired] : []),
+      ]
       const title = `${ticketView(f).title} [qa:${fp}]`
+      // A security finding's video and screenshot can show what leaked; they stay in the run artifacts.
       const video = f.area === 'security' ? undefined : v.artifacts.video
+      const screenshot = f.area === 'security' || !visual ? undefined : screenshotPath(outDir, v)
       const preview = { title, labels: names, body: buildBody(entry, spec, { runUrl, sha, regressionOf }) }
       await act(entry, regressionOf ? 'regression' : 'created', preview, async (ctx) => {
-        const videoUrl = video ? await uploadVideo(ctx, videoPath(outDir, video)) : undefined
-        const body = buildBody(entry, spec, { runUrl, sha, videoUrl, regressionOf })
+        const videoUrl = video ? await uploadAsset(ctx, videoPath(outDir, video)) : undefined
+        const screenshotUrl = screenshot ? await uploadAsset(ctx, screenshot) : undefined
+        const body = buildBody(entry, spec, { runUrl, sha, videoUrl, screenshotUrl, regressionOf })
         const issue = await createIssue(ctx, title, body, sev, names)
         return { issueId: issue.id, identifier: issue.identifier, url: issue.url }
       })

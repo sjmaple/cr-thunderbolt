@@ -331,6 +331,19 @@ describe('visual oracle', () => {
     }
     expect(findingSchema.safeParse(visual({ screenshot: 'mcp/transcript.json' })).success).toBe(false)
   })
+
+  test('a visual fingerprint ignores the wording and keeps the element and the function', () => {
+    const a = visual({
+      area: 'onboarding',
+      function: 'onboarding-name',
+      element: 'button "Continue"',
+      oracle: { type: 'visual', evidence: 'the keyboard hides Continue' },
+    })
+    const b = { ...a, oracle: { type: 'visual', evidence: 'Continue sits under the keyboard' } }
+    expect(fingerprint(a)).toBe(fingerprint(b))
+    expect(fingerprint({ ...a, element: 'textbox "Name"' })).not.toBe(fingerprint(a))
+    expect(fingerprint({ ...a, function: 'onboarding-theme' })).not.toBe(fingerprint(a))
+  })
 })
 
 test('each charter names exactly the functions of its list, and says the AI is real only for a real-AI charter', async () => {
