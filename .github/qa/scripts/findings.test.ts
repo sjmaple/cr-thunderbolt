@@ -303,6 +303,36 @@ describe('layout oracle', () => {
   })
 })
 
+describe('visual oracle', () => {
+  /** A visual finding: a screenshot the explorer took instead of a repro spec. */
+  const visual = (fields: Partial<RawFinding>): RawFinding => ({
+    ...finding,
+    area: 'layout',
+    oracle: { type: 'visual', evidence: 'The Continue button sits under the cookie banner' },
+    element: 'button "Continue"',
+    function: 'onboarding-name',
+    screenshot: 'mcp/page-1.png',
+    repro_spec: undefined,
+    ...fields,
+  })
+
+  test('a visual finding needs a screenshot and no spec', () => {
+    expect(findingSchema.safeParse(visual({ screenshot: 'mcp/page-1.png', repro_spec: undefined })).success).toBe(true)
+    expect(findingSchema.safeParse(visual({ screenshot: undefined })).success).toBe(false)
+    expect(findingSchema.safeParse({ ...finding, repro_spec: undefined }).success).toBe(false)
+  })
+
+  test("a screenshot path stays inside the session's MCP output dirs", () => {
+    for (const screenshot of ['mcp-b/page-2026-10-19T16-08-14-750Z.png', 'mcp/page-1.jpeg', 'mcp/page-1.jpg']) {
+      expect(findingSchema.safeParse(visual({ screenshot })).success).toBe(true)
+    }
+    for (const screenshot of ['../mcp/page-1.png', 'mcp/../../x.png', '/tmp/mcp/page-1.png', 'mcp/a/b.png', 'x.png']) {
+      expect(findingSchema.safeParse(visual({ screenshot })).success).toBe(false)
+    }
+    expect(findingSchema.safeParse(visual({ screenshot: 'mcp/transcript.json' })).success).toBe(false)
+  })
+})
+
 test('each charter names exactly the functions of its list, and says the AI is real only for a real-AI charter', async () => {
   const lists: Record<string, QaFunction[]> = await Bun.file(join(import.meta.dir, '../functions.json')).json()
   for (const [charter, list] of Object.entries(lists)) {

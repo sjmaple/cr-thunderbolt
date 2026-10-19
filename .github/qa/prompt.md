@@ -58,6 +58,8 @@ A wrong or invented answer about a fixture is an `assert-failed` finding: quote 
   it); "not tried" is not a reason, so go back and try it.
 - After every major action (submit, save, delete, navigate, reload) read `browser_console_messages` and, when
   something looks wrong, `browser_network_requests`.
+- Take a screenshot with `browser_take_screenshot` (no `filename`) of every new screen, and again after you focus a
+  text field, then look at it the way a user would.
 - A function marked "(after a reload)" passes only when its outcome still shows after a reload (`browser_navigate`
   to the same URL) that you did after the change. Check any other change that should persist the same way.
 - Prefer `browser_fill_form` and one `browser_snapshot` per screen over many small calls.
@@ -123,6 +125,9 @@ status, or the text on screen):
   `browser_console_messages`, and call it again whenever the error count grows. A `[qa-layout]` line other than
   `[qa-layout] ready` is a `layout` finding with that line as its evidence, never a `console-error` one, even though
   it is a console error. Do not measure the layout yourself.
+- `visual`: a screenshot shows a defect a user would notice and the probe did not report: a control covered by
+  something, text cut off, elements overlapping, a broken layout. The evidence is one sentence saying what the
+  screenshot shows. A problem the probe reported is a `layout` finding, never a `visual` one.
 
 - `assert-failed`: the screen contradicts what you just did (a renamed item still shows its old name), or the AI
   gives a wrong or invented answer about a fixture.
@@ -135,8 +140,8 @@ Anything else (a design you dislike, slow but working) is not a finding.
 
 ## Record each finding immediately
 
-As soon as you find a bug, before you explore further, write two files with Write. One file per finding, never
-append; number findings 1, 2, 3…
+As soon as you find a bug, before you explore further, write two files with Write (one for a `visual` finding). One
+file per finding, never append; number findings 1, 2, 3…
 
 1. `<output directory>/findings/<n>.json`:
 
@@ -157,8 +162,16 @@ append; number findings 1, 2, 3…
    `area` is exactly one of these words (anything else throws the finding away): chat, settings, skills, projects,
    widgets, layout, i18n, models, sync, auth, onboarding, data, security, other.
 
-2. `<output directory>/repro/<n>.spec.ts`: a Playwright test that FAILS while the bug exists and PASSES once it is
-   fixed, because it asserts the expected behaviour. A spec that breaks any rule below is thrown away:
+   A `visual` finding has no `repro_spec` and no spec file. Instead it has three fields:
+   - `screenshot`: the screenshot that shows the defect. Its tool result gives the file's full path: your output
+     directory, then `mcp/` (`mcp-b/` for the second device), then the file name. Write the part from `mcp` on, for
+     example `mcp/page-2026-10-19T16-08-14-750Z.png`.
+   - `element`: the affected element as `<role> "<accessible name>"`, for example `button "Continue"`.
+   - `function`: the function id of the attempt where you saw it.
+
+2. Except for a `visual` finding, `<output directory>/repro/<n>.spec.ts`: a Playwright test that FAILS while the
+   bug exists and PASSES once it is fixed, because it asserts the expected behaviour. A spec that breaks any rule
+   below is thrown away:
    - Import only from `@playwright/test`, from exactly `'../../../e2e/helpers'` and, for a `layout` finding,
      from exactly `'../../../.github/qa/layout'`.
    - Helpers: `loginViaEmailCode(page)` signs in a fresh user and waits for the chat composer (it returns the email);

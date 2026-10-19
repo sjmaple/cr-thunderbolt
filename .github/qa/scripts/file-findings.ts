@@ -297,7 +297,7 @@ const buildBody = (
     `## Expected\n${view.expected}`,
     `## Actual\n${view.actual}`,
     `## Oracle: ${f.oracle.type}\n\`\`\`\n${view.oracle.evidence}\n\`\`\``,
-    `## Repro spec\n\`\`\`ts\n${sanitize(spec, 6000, runUrl)}\n\`\`\``,
+    spec && `## Repro spec\n\`\`\`ts\n${sanitize(spec, 6000, runUrl)}\n\`\`\``,
     extra.videoUrl && `[Replay video](${extra.videoUrl})`,
   ]
     .filter(Boolean)
@@ -397,7 +397,8 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
   try {
     for (const entry of entries) {
       const { v, f, fp, sev } = entry
-      const spec = await readFile(join(outDir, v.charterDir, f.repro_spec), 'utf8')
+      // A visual finding has a screenshot instead of a spec.
+      const spec = f.repro_spec ? await readFile(join(outDir, v.charterDir, f.repro_spec), 'utf8') : ''
       if (secretPattern.test(modelText(f, spec))) {
         filed.push({ ...baseOf(entry), action: 'refused', reason: 'secret pattern in model-written text' })
         continue

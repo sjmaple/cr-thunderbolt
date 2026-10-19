@@ -8,10 +8,13 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { lintReproSpec, type RawFinding } from './findings'
+import type { TranscriptMessage } from './report'
 import {
   judge,
   replay,
   replayEnv,
+  screenshotTaken,
+  worstJudgeCost,
   type CreateMessage,
   type ReplayReport,
   type RunReplay,
@@ -27,7 +30,7 @@ test('${title}', async ({ page }) => {
 })
 `
 
-const makeFinding = (title: string, oracle: RawFinding['oracle']): RawFinding => ({
+const makeFinding = (title: string, oracle: RawFinding['oracle']): RawFinding & { repro_spec: string } => ({
   title,
   area: 'chat',
   charter: 'c2-chat',
@@ -40,6 +43,37 @@ const makeFinding = (title: string, oracle: RawFinding['oracle']): RawFinding =>
 })
 
 const pageError = { type: 'page-error', evidence: 'TypeError: messages is undefined' }
+
+const shotFile = 'page-2026-10-19T16-08-14-750Z.png'
+
+/** A visual finding: a screenshot under the session's `mcp/` instead of a repro spec. */
+const makeVisual = (title: string, screenshot = `mcp/${shotFile}`): RawFinding => ({
+  ...makeFinding(title, { type: 'visual', evidence: 'The send button sits under the composer toolbar' }),
+  area: 'layout',
+  element: 'button "Send"',
+  function: 'chat-send',
+  screenshot,
+  repro_spec: undefined,
+})
+
+/**
+ * What Playwright MCP 0.0.83 returns for `browser_take_screenshot` without a filename, run with
+ * `--file-paths absolute`; transcript.json keeps the text block only, not the image.
+ */
+const screenshotResult = (dir: string, file = shotFile) =>
+  `### Result\n- [Screenshot of viewport](${dir}/${file})\n### Ran Playwright code\n\`\`\`js\n` +
+  `// Screenshot viewport and save it as ${dir}/${file}\nawait page.screenshot({\n  path: '${dir}/${file}',\n` +
+  `  scale: 'css',\n  type: 'png'\n});\n\`\`\`\n### Events\n` +
+  `- New console entries: ${dir}/console-2026-10-19T16-08-14-157Z.log#L2`
+const sessionDir = '/home/runner/work/thunderbolt/thunderbolt/qa-out/c2-chat'
+
+const callsOf = (steps: (readonly [string, string])[]): TranscriptMessage[] =>
+  steps.flatMap(([name, result], i) => [
+    { message: { content: [{ type: 'tool_use' as const, id: `t${i}`, name }] } },
+    { message: { content: [{ type: 'tool_result' as const, tool_use_id: `t${i}`, content: result }] } },
+  ])
+
+const pngBytes = Buffer.from('not really a png')
 
 let outDir: string
 let qaDir: string
@@ -60,7 +94,13 @@ afterEach(async () => {
 /** Writes `c2-chat/findings/<title>.json` and, unless `spec` is null, its repro spec. */
 const writeFinding = async (finding: RawFinding, spec: string | null = validSpec(finding.title)) => {
   await Bun.write(join(outDir, 'c2-chat/findings', `${finding.title}.json`), JSON.stringify(finding))
-  if (spec !== null) await Bun.write(join(outDir, 'c2-chat', finding.repro_spec), spec)
+  if (spec !== null && finding.repro_spec) await Bun.write(join(outDir, 'c2-chat', finding.repro_spec), spec)
+}
+
+/** Writes c2-chat's transcript with the given tool calls, and the screenshot file `mcp/<shotFile>`. */
+const writeSession = async (steps: (readonly [string, string])[]) => {
+  await Bun.write(join(outDir, 'c2-chat/transcript.json'), JSON.stringify(callsOf(steps)))
+  await Bun.write(join(outDir, 'c2-chat/mcp', shotFile), pngBytes)
 }
 
 const controlSpec = () => join(qaDir, 'control/stack.spec.ts')
@@ -333,6 +373,66 @@ describe('replay', () => {
     expect(droppedAt(result, 'replay').map((entry) => entry.reason)).toEqual(['stack unhealthy'])
   })
 
+  test('replay confirms a visual finding whose screenshot the browser tool took, without Playwright', async () => {
+    await writeFinding(makeVisual('shot'), null)
+    await writeSession([['mcp__playwright__browser_take_screenshot', screenshotResult(`${sessionDir}/mcp`)]])
+    const calls: string[][] = []
+
+    const result = await replay(outDir, fakeRunner({}, calls), qaDir)
+
+    expect(calls).toEqual([])
+    expect(result.confirmed).toEqual([
+      {
+        charterDir: 'c2-chat',
+        id: 'shot',
+        finding: makeVisual('shot'),
+        replay: { failed: 0, runs: 0 },
+        artifacts: { screenshot: relative(process.cwd(), join(outDir, 'c2-chat/mcp', shotFile)) },
+      },
+    ])
+  })
+
+  test('a visual finding does not take a place under the replay cap', async () => {
+    for (let n = 0; n < 20; n++) await writeFinding(makeFinding(`f${String(n).padStart(2, '0')}`, pageError))
+    await writeFinding(makeVisual('shot'), null)
+    await writeSession([['mcp__playwright__browser_take_screenshot', screenshotResult(`${sessionDir}/mcp`)]])
+
+    const result = await replay(outDir, fakeRunner({}, []), qaDir)
+
+    expect(result.deferred).toEqual([])
+    expect(titles(result.confirmed)).toEqual(['shot'])
+  })
+
+  test('replay drops a visual finding whose screenshot the session never took, or that is missing', async () => {
+    await writeFinding(makeVisual('untaken'), null)
+    await writeFinding(makeVisual('lost', 'mcp/page-lost.png'), null)
+    await writeSession([
+      // The explorer typed the file name into the page and read it back: not a screenshot.
+      ['mcp__playwright__browser_evaluate', `### Result\n"${sessionDir}/mcp/${shotFile}"`],
+      ['mcp__playwright__browser_take_screenshot', screenshotResult(`${sessionDir}/mcp`, 'page-lost.png')],
+    ])
+
+    const result = await replay(outDir, fakeRunner({}, []), qaDir)
+
+    expect(result.confirmed).toEqual([])
+    expect(droppedAt(result, 'lint').map((entry) => [entry.file.id, entry.reason])).toEqual([
+      ['lost', 'screenshot not found'],
+      ['untaken', 'screenshot not taken by the browser tool in this session'],
+    ])
+  })
+
+  test('a screenshot counts only when a browser screenshot result of the same device names it', () => {
+    const transcript = callsOf([
+      ['mcp__playwright__browser_take_screenshot', screenshotResult(`${sessionDir}/mcp`, 'page-a.png')],
+      ['mcp__playwright_b__browser_take_screenshot', screenshotResult(`${sessionDir}/mcp-b`, 'page-b.png')],
+      ['mcp__playwright__browser_evaluate', `${sessionDir}/mcp/page-c.png`],
+    ])
+    expect(screenshotTaken(transcript, 'mcp/page-a.png')).toBe(true)
+    expect(screenshotTaken(transcript, 'mcp-b/page-b.png')).toBe(true)
+    expect(screenshotTaken(transcript, 'mcp/page-b.png')).toBe(false)
+    expect(screenshotTaken(transcript, 'mcp/page-c.png')).toBe(false)
+  })
+
   test('Playwright gets only the allowlisted variables, never the caller environment', () => {
     expect(Object.keys(replayEnv('qa-out')).sort()).toEqual([
       'CI',
@@ -385,9 +485,81 @@ describe('judge', () => {
   const writeCandidates = async (candidates: Verified) => {
     await Bun.write(join(outDir, 'candidates.json'), JSON.stringify(candidates))
     for (const file of [...candidates.confirmed, ...candidates.flaky]) {
-      await Bun.write(join(outDir, file.charterDir, file.finding.repro_spec), validSpec(file.finding.title))
+      const { repro_spec, screenshot, title } = file.finding
+      if (repro_spec) await Bun.write(join(outDir, file.charterDir, repro_spec), validSpec(title))
+      if (screenshot) await Bun.write(join(outDir, file.charterDir, screenshot), pngBytes)
     }
   }
+
+  const visualCandidate = (finding: RawFinding) => ({
+    charterDir: 'c2-chat',
+    id: finding.title,
+    finding,
+    replay: { failed: 0, runs: 0 },
+    artifacts: { screenshot: `qa-out/c2-chat/${finding.screenshot}` },
+  })
+
+  const recordingCreate =
+    (calls: Anthropic.MessageCreateParamsNonStreaming[]): CreateMessage =>
+    async (params) => {
+      calls.push(params)
+      return {
+        content: [{ type: 'text', text: '{"keep":true,"reason":"The button is hidden."}', citations: null }],
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 2000, output_tokens: 100 },
+      }
+    }
+
+  test('the judge sees the screenshot of a visual finding, and the finding without a spec', async () => {
+    const png = makeVisual('png')
+    const jpeg = makeVisual('jpeg', 'mcp-b/page-1.jpg')
+    await writeCandidates({ confirmed: [png, jpeg].map(visualCandidate), flaky: [], observations: [], dropped: [] })
+    const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
+
+    const result = await judge(outDir, recordingCreate(calls), qaDir)
+
+    expect(titles(result.confirmed)).toEqual(['png', 'jpeg'])
+    const image = (mediaType: 'image/png' | 'image/jpeg'): Anthropic.ImageBlockParam => ({
+      type: 'image',
+      source: { type: 'base64', media_type: mediaType, data: pngBytes.toString('base64') },
+    })
+    expect(calls.map((call) => call.messages[0].content)).toEqual([
+      [image('image/png'), { type: 'text', text: `<finding>\n${JSON.stringify(png, null, 2)}\n</finding>` }],
+      [image('image/jpeg'), { type: 'text', text: `<finding>\n${JSON.stringify(jpeg, null, 2)}\n</finding>` }],
+    ])
+  })
+
+  test('the judge never reads a screenshot path that leaves the session dir', async () => {
+    // A candidates.json written by anything but replay: the file exists, one level above the session dir.
+    const outside = { ...visualCandidate(makeVisual('escape')), finding: makeVisual('escape', '../secret.png') }
+    await Bun.write(join(outDir, 'secret.png'), pngBytes)
+    await Bun.write(
+      join(outDir, 'candidates.json'),
+      JSON.stringify({ confirmed: [outside], flaky: [], observations: [], dropped: [] }),
+    )
+    const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
+
+    await expect(judge(outDir, recordingCreate(calls), qaDir)).rejects.toThrow()
+    expect(calls).toEqual([])
+  })
+
+  test('an image counts toward the judge spend ceiling', async () => {
+    expect(worstJudgeCost('s', 'u', 1) - worstJudgeCost('s', 'u', 0)).toBeCloseTo((1_600 * 4) / 1_000_000)
+    // Text that fits under the $2 ceiling with 800 input tokens to spare, so only the image's 1,600 push it over.
+    const base = makeVisual('tight')
+    const room = (2 - (4096 * 20) / 1_000_000) / (4 / 1_000_000) - 1_000 - 26 - 800
+    const pad = room - JSON.stringify(base, null, 2).length - '<finding>\n\n</finding>'.length
+    const tight = { ...base, actual: 'x'.repeat(Math.floor(pad)) }
+    await writeCandidates({ confirmed: [visualCandidate(tight)], flaky: [], observations: [], dropped: [] })
+    const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
+
+    const result = await judge(outDir, recordingCreate(calls), qaDir)
+
+    expect(calls).toEqual([])
+    expect(result.deferred).toEqual([
+      { file: visualCandidate(tight), step: 'judge', reason: "over the judge's spend ceiling of $2" },
+    ])
+  })
 
   test('keeps what the judge keeps and drops the rest, defaulting to drop on a malformed reply', async () => {
     const observation = { charterDir: 'c2-chat', id: 'obs', finding: makeFinding('obs', pageError) }

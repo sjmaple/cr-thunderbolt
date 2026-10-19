@@ -71,13 +71,19 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
    `browser_console_messages`. `report.ts` follows each navigate link and lists a session whose page loads lack the
    ready line under "Layout probe", because a clean layout there proves nothing. `noise.txt` turns a `[qa-layout]`
-   line filed as a `console-error` into an observation.
+   line filed as a `console-error` into an observation. The explorer also takes a screenshot of every new screen
+   and sees it (`--image-responses allow`). A defect it sees there and the probe did not report is a `visual`
+   finding, which names its screenshot (`mcp/<file>`) instead of a repro spec. `--output-dir` is
+   `<session>/mcp` (`mcp-b` for c7's second browser), and the job uploads its screenshots and console logs with
+   the session.
 3. **replay** (`verify.ts replay`): schema, oracle (`noise.txt`) and lint gates, then each spec 3 times. 3 of 3
    failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`); 1 or 2 are flaky
    (report only), 0 is dropped. c7 replays on Postgres + PowerSync, the real-AI charters against the real providers,
-   the rest on pglite with the fake AI.
-4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`. The
-   default answer is drop. Writes `verified.json`.
+   the rest on pglite with the fake AI. A `visual` finding skips the lint and Playwright and takes no place under
+   the replay cap: it is confirmed when its screenshot exists and the session's transcript shows a browser
+   screenshot result naming it, and dropped otherwise.
+4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
+   `visual` finding is judged on its screenshot. The default answer is drop. Writes `verified.json`.
 5. **file** (`file-findings.ts`): fingerprint dedupe, severity table, ticket caps and roll-ups, secret refusal.
    Dry run unless `--live`.
 6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 fake-AI tickets in fixable areas. The original spec
@@ -322,9 +328,10 @@ workspace's spend limit bounds what a leaked key can cost, and auto-fix stays of
 Caps live in one place per step type: the `env` block at the top of `qa-weekly.yml` for explore and fix (budget,
 turns, timeout), and the constants at the top of `verify.ts` for the judge. The first values are generous on
 purpose: explore $10 / 400 turns / 60 min, fix $20 / 200 turns / 60 min. Per leg, at most 20 findings are replayed
-and 15 judged, and a judge leg spends at most $2 (a call is admitted only if its worst case fits: prompt bytes plus
-`max_tokens`, at Opus prices). Findings over a cap are listed as deferred and never filed. The app's own provider
-calls in real-AI sessions are **not measured**: watch the QA provider keys' dashboards.
+and 15 judged, and a judge leg spends at most $2 (a call is admitted only if its worst case fits: prompt bytes,
+1,600 tokens per screenshot, plus `max_tokens`, at Opus prices). Findings over a cap are listed as deferred and
+never filed. The app's own provider calls in real-AI sessions are **not measured**: watch the QA provider keys'
+dashboards.
 
 **Rule:** per step type, cap = the highest value observed (the 95th percentile once there are 20 samples) + 50%,
 for cost, turns and duration. The report's "Calibration hint" table computes it from the run's own sessions.
@@ -418,8 +425,9 @@ Also:
   placeholder request in c3 was).
 - Repro specs are model-written. A spec that fails before its assertion is dropped by the judge even when the bug
   is real, which is how a hand-written skill-delete canary was missed locally (recall 2/3).
-- A security finding's ticket carries no run link, but its finding JSON and repro spec still sit in the explore
-  and replay artifacts for their 7-day retention. This repo is public, so any signed-in GitHub user can download
+- A security finding's ticket carries no run link, but its finding JSON, repro spec and screenshots still sit in
+  the explore and replay artifacts for their 7-day retention. The secret scan before the upload matches key text,
+  so it cannot see a key drawn in a screenshot. This repo is public, so any signed-in GitHub user can download
   them.
 - A scheduled run acts as the user who last edited the cron line. `claude-code-action` refuses bot actors, so
   that must be a person.

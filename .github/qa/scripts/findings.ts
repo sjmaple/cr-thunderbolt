@@ -33,6 +33,7 @@ const oracleTypes = [
   'lost-on-reload',
   'stuck',
   'layout',
+  'visual',
   'assert-failed',
   'ai-reported-failure',
 ] as const
@@ -67,8 +68,10 @@ export const realAiCharters = new Set([
 export type Area = (typeof areas)[number]
 export type Severity = 'Urgent' | 'High' | 'Medium' | 'Low'
 
-/** A finding that passed the oracle check: a known oracle type backed by quoted evidence. */
-export const findingSchema = z.object({
+/** A browser screenshot's path inside the session dir: `mcp/<file>`, or `mcp-b/<file>` for c7's second device. */
+export const screenshotFile = z.string().regex(/^mcp(-b)?\/[\w.-]+\.(png|jpe?g)$/)
+
+const findingFields = z.object({
   title: z.string().min(1),
   area: z.enum(areas),
   charter: z.string().min(1),
@@ -77,12 +80,30 @@ export const findingSchema = z.object({
   steps: z.array(z.string()).min(1),
   expected: z.string(),
   actual: z.string(),
-  // Resolved inside qa-out/<charter>/, so it must not be able to point anywhere else.
-  repro_spec: z.string().regex(/^repro\/[\w-]+\.spec\.ts$/),
+  // Both paths are resolved inside qa-out/<charter>/, so they must not be able to point anywhere else.
+  repro_spec: z
+    .string()
+    .regex(/^repro\/[\w-]+\.spec\.ts$/)
+    .optional(),
+  screenshot: screenshotFile.optional(),
+  /** The accessible name of the element a visual finding is about, as `<role> "<name>"`. */
+  element: z.string().optional(),
+  /** The function id of the attempt that showed the finding, as in its attempt record. */
+  function: z.string().optional(),
 })
+
+/** A visual finding is proven by its screenshot, every other one by a repro spec. */
+const provable = (finding: { oracle: { type: string }; repro_spec?: string; screenshot?: string }) =>
+  finding.oracle.type === 'visual' ? finding.screenshot !== undefined : finding.repro_spec !== undefined
+const provableMessage = 'a visual finding needs a screenshot, any other finding a repro_spec'
+
+/** A finding that passed the oracle check: a known oracle type backed by quoted evidence. */
+export const findingSchema = findingFields.refine(provable, provableMessage)
 export type Finding = z.infer<typeof findingSchema>
 
-const rawFindingSchema = findingSchema.extend({ oracle: z.object({ type: z.string(), evidence: z.string() }) })
+const rawFindingSchema = findingFields
+  .extend({ oracle: z.object({ type: z.string(), evidence: z.string() }) })
+  .refine(provable, provableMessage)
 /** A finding as the explorer wrote it, before the oracle check. */
 export type RawFinding = z.infer<typeof rawFindingSchema>
 

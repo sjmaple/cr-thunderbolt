@@ -105,10 +105,12 @@ const writeVerified = async (findings: Partial<RawFinding>[], video?: string, ch
   for (const [i, fields] of findings.entries()) {
     const finding = { ...base, ...fields }
     await mkdir(join(outDir, charterDir, 'repro'), { recursive: true })
-    await writeFile(
-      join(outDir, charterDir, finding.repro_spec),
-      `// spec ${i}\nawait page.goto('http://localhost:1420')`,
-    )
+    if (finding.repro_spec) {
+      await writeFile(
+        join(outDir, charterDir, finding.repro_spec),
+        `// spec ${i}\nawait page.goto('http://localhost:1420')`,
+      )
+    }
     confirmed.push({
       charterDir,
       id: String(i),

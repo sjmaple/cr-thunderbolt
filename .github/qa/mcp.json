@@ -19,11 +19,11 @@
         "--file-paths",
         "absolute",
         "--image-responses",
-        "omit",
+        "allow",
         "--snapshot-mode",
         "none",
         "--output-dir",
-        "${QA_OUT:-qa-out}/mcp"
+        "${QA_OUT:-qa-out}/${QA_CHARTER:-session}/mcp"
       ]
     }
   }

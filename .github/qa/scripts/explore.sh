@@ -13,7 +13,8 @@
 # A session is <charter>-<platform>, e.g. c4-skills-projects-phone, or free-<case>-<platform> for the free session of a
 # case in journeys.json (platform ids are in platforms.json and never contain a hyphen), e.g.
 # `run "free-$(.github/qa/scripts/explore.sh journey)-phone" qa-out` for this week's case on the phone.
-# `run` needs ANTHROPIC_API_KEY. It writes <out-dir>/<session>/{findings,repro,attempts}/ (the explorer),
+# `run` needs ANTHROPIC_API_KEY. It writes <out-dir>/<session>/{findings,repro,attempts}/ (the explorer), mcp/ (the
+# browser's screenshots and console logs),
 # execution.json + session.json (metrics) and transcript.json (the tool calls, for the coverage check).
 # The platform sets the viewport and the MCP config. The two-device charter needs
 # QA_MCP_CONFIG='.github/qa/mcp.json .github/qa/mcp-two-devices.json' (its second browser).
