@@ -9,5 +9,5 @@ tauri
 window.__TAURI_INTERNALS__
 convertFileSrc
 
-# The layout probe announces itself with console.error, because the MCP drops quieter levels. It is not an error.
-[qa-layout] ready
+# A probe line is a `layout` finding. Filed as `console-error` it is only an observation, so its mislabel is visible.
+[qa-layout]

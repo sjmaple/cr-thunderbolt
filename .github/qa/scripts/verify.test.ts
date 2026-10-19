@@ -108,6 +108,19 @@ const droppedAt = (result: Verified, gate: Verified['dropped'][number]['gate']) 
   result.dropped.filter((entry) => entry.gate === gate)
 
 describe('replay', () => {
+  test('a probe line filed as a console error is an observation, as a layout finding it replays', async () => {
+    await Bun.write(join(qaDir, 'noise.txt'), await Bun.file(join(import.meta.dir, '../noise.txt')).text())
+    const evidence = '[ERROR] [qa-layout] covered button "Continue" @ http://localhost:1424/layout-probe.js:209'
+    await writeFinding(makeFinding('mislabeled', { type: 'console-error', evidence }))
+    await writeFinding(makeFinding('layout', { type: 'layout', evidence }))
+    const calls: string[][] = []
+
+    const result = await replay(outDir, fakeRunner({}, calls), qaDir)
+
+    expect(titles(result.observations)).toEqual(['mislabeled'])
+    expect(calls[0]).toEqual([controlSpec(), join(outDir, 'c2-chat/repro/layout.spec.ts')])
+  })
+
   test('only findings with an oracle, outside the noise list and with a clean spec reach Playwright', async () => {
     await Bun.write(join(outDir, 'c2-chat/findings/broken.json'), '{ not json')
     await writeFinding(makeFinding('no-oracle', { type: 'looks-off', evidence: 'the button seems odd' }))

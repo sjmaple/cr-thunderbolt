@@ -64,11 +64,14 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    canary build. Each runs with `claude-code-action`, the Playwright MCP (`mcp.json`, plus `mcp-two-devices.json` for c7's second browser) and the
    prompt `explore.sh prompt` builds. Attempts, findings and repro specs are written as they happen, so a cut session
    keeps its work. `mcp.json` loads `layout-probe.js` into every page (`--init-script`, a path relative to the repo
-   root, where the session runs). The probe writes `[qa-layout] ready` once per page load and a `[qa-layout] <kind>
-<target>` line per layout problem, all with `console.error`, so they pass the MCP's `--console-level error`. A
-   problem line is a `layout` finding. `report.ts` lists each session with page loads that lack the ready line under
-   "Layout probe", because a clean layout there proves nothing. `noise.txt` keeps the ready line out of
-   `console-error` findings.
+   root, where the session runs). The probe writes `[qa-layout] ready` once per page load and one
+   `[qa-layout] <kind> <target>` line per layout problem, all with `console.error`, so they pass the MCP's
+   `--console-level error`. A problem line is a `layout` finding. The MCP does not put console text in a tool
+   result: a navigate result holds a count of console errors and a link to the lines the load wrote, in a log file
+   under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
+   `browser_console_messages`. `report.ts` follows each navigate link and lists a session whose page loads lack the
+   ready line under "Layout probe", because a clean layout there proves nothing. `noise.txt` turns a `[qa-layout]`
+   line filed as a `console-error` into an observation.
 3. **replay** (`verify.ts replay`): schema, oracle (`noise.txt`) and lint gates, then each spec 3 times. 3 of 3
    failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`); 1 or 2 are flaky
    (report only), 0 is dropped. c7 replays on Postgres + PowerSync, the real-AI charters against the real providers,

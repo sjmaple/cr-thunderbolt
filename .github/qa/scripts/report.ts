@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
 import type { Canary } from './canaries'
@@ -179,15 +179,38 @@ const isAction = (step: Step) => {
   const tool = step.kind === 'call' ? browserTool(step.tool) : undefined
   return tool !== undefined && !readOnlyTools.has(tool)
 }
+/** The lines the MCP says a result added to its console log: `- New console entries: <path>#L<from>[-L<to>]`. */
+const consoleLink = /^- New console entries: (.+)#L(\d+)(?:-L(\d+))?$/m
+
+/** Reads an MCP console log; a link is absolute under `--file-paths absolute`, else relative to the MCP's cwd. */
+const readConsoleLog = (path: string) => readFile(resolve(path), 'utf8').catch(() => undefined)
+
+/** The load's result links console lines that hold the probe's ready line. */
+const probeRan = async (result: string, readLog: (path: string) => Promise<string | undefined>) => {
+  const [, path, from, to = from] = consoleLink.exec(result) ?? []
+  const log = path ? await readLog(path) : undefined
+  return (
+    log
+      ?.split('\n')
+      .slice(Number(from) - 1, Number(to))
+      .some((line) => line.includes(readyLine)) ?? false
+  )
+}
+
 /**
- * Page loads in a session and how many of them did not show `[qa-layout] ready` in their result: a navigate result
- * lists the console messages of the load, so the probe's ready line is there when the probe ran.
+ * Page loads in a session and how many of them did not show `[qa-layout] ready`. The MCP puts no console text in a
+ * navigate result, only a count and a link to the log lines the load wrote, so each link is followed (`readLog`).
+ * A load with no link, or whose linked lines lack the ready line, counts as missing.
  */
-export const probeGaps = (transcript: TranscriptMessage[]): { loads: number; missing: number } => {
+export const probeGaps = async (
+  transcript: TranscriptMessage[],
+  readLog = readConsoleLog,
+): Promise<{ loads: number; missing: number }> => {
   const loads = toSteps(transcript).flatMap((step) =>
     step.kind === 'result' && ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '') ? [step.text] : [],
   )
-  return { loads: loads.length, missing: loads.filter((text) => !text.includes(readyLine)).length }
+  const ran = await Promise.all(loads.map((result) => probeRan(result, readLog)))
+  return { loads: loads.length, missing: ran.filter((ok) => !ok).length }
 }
 const isNavigation = (step: Step) =>
   step.kind === 'call' && ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '')
@@ -302,7 +325,7 @@ type ReportInput = {
   scorecard?: Scorecard
   canary?: CanaryResult
   /** Sessions with page loads that lacked the layout probe, by session id. */
-  probe?: Map<string, ReturnType<typeof probeGaps>>
+  probe?: Map<string, { loads: number; missing: number }>
 }
 
 const stopLabel = {
@@ -618,7 +641,7 @@ export const runSummary = async (
   const lists: Record<string, QaFunction[]> = await Bun.file(join(qaDir, 'functions.json')).json()
   const functions = new Map(Object.entries(lists))
   const coverage = new Map<string, Coverage>()
-  const probe = new Map<string, ReturnType<typeof probeGaps>>()
+  const probe = new Map<string, { loads: number; missing: number }>()
   for (const s of sessions) {
     const dir = join(outDir, s.charter)
     const attempts = await loadAttempts(dir)
@@ -633,7 +656,7 @@ export const runSummary = async (
     const transcript = isFix(s)
       ? undefined
       : await readJson<TranscriptMessage[]>(join(dir, 'transcript.json')).catch(() => undefined)
-    const gaps = transcript && probeGaps(transcript)
+    const gaps = transcript && (await probeGaps(transcript))
     if (gaps && gaps.missing > 0) probe.set(s.charter, gaps)
     if (list) coverage.set(s.charter, checkCoverage(list, attempts, transcript))
   }

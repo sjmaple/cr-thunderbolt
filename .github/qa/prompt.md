@@ -118,11 +118,11 @@ status, or the text on screen):
   (the page scrolls sideways), `overflow-text` (text wider than its box and not shortened with an ellipsis),
   `offscreen` (a control you cannot scroll into view), `covered` (something sits over a control's center) or
   `behind-keyboard` (the on-screen keyboard hides the focused field or a button of the dialog). It reports a problem
-  only after it held for half a second, and it skips controls behind an open dialog, toasts and popovers. Read the
-  console messages a tool returns after each action. When none shows, call `browser_console_messages` once on every
-  new screen, because a message appears only after the page settled. A `[qa-layout]` line other than
-  `[qa-layout] ready` is a `layout` finding with that exact line as its evidence, never a `console-error` one,
-  even though it shows in the console. Do not measure the layout yourself.
+  only after it held for half a second, and it skips controls behind an open dialog, toasts and popovers. A tool's
+  result shows only a count of console errors, never the lines. After every navigation, wait about 1 s and call
+  `browser_console_messages`, and call it again whenever the error count grows. A `[qa-layout]` line other than
+  `[qa-layout] ready` is a `layout` finding with that line as its evidence, never a `console-error` one, even though
+  it is a console error. Do not measure the layout yourself.
 
 - `assert-failed`: the screen contradicts what you just did (a renamed item still shows its old name), or the AI
   gives a wrong or invented answer about a fixture.

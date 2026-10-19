@@ -16,6 +16,8 @@
         "error",
         "--init-script",
         ".github/qa/layout-probe.js",
+        "--file-paths",
+        "absolute",
         "--image-responses",
         "omit",
         "--snapshot-mode",

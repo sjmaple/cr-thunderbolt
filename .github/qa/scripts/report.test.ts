@@ -605,26 +605,44 @@ describe('probeGaps', () => {
       { message: { content: [{ type: 'tool_use' as const, id: `t${i}`, name }] } },
       { message: { content: [{ type: 'tool_result' as const, tool_use_id: `t${i}`, content: result }] } },
     ])
-  const ready = '### New console messages\n- [ERROR] [qa-layout] ready @ http://localhost:1424/'
+  // What Playwright MCP 0.0.83 returns for a navigation: a count of console errors and a link to the lines the page
+  // wrote since the last result, never the console text itself.
+  const navigated = (link?: string) =>
+    "### Ran Playwright code\n```js\nawait page.goto('http://localhost:1424/');\n```\n### Page\n" +
+    '- Page URL: http://localhost:1424/\n- Page Title: Thunderbolt\n- Console: 2 errors, 0 warnings\n' +
+    (link ? `### Events\n- New console entries: ${link}` : '')
+  const readyLog = [
+    '[     217ms] [ERROR] [qa-layout] ready @ /repo/.github/qa/layout-probe.js:242',
+    '[     254ms] [ERROR] Failed to load resource: the server responded with a status of 404',
+    '[     762ms] [ERROR] [qa-layout] covered button "Continue" @ /repo/.github/qa/layout-probe.js:209',
+  ].join('\n')
+  const logs: Record<string, string> = {
+    '/out/mcp/console-a.log': readyLog,
+    '/out/mcp-b/console-b.log': readyLog,
+    '/out/mcp/console-c.log': '[ 90ms] [ERROR] Failed to load resource: 404\n[ 99ms] [ERROR] boom',
+  }
+  const readLog = async (path: string) => logs[path]
 
-  it('counts page loads without the probe, for navigate and navigate_back on either device', () => {
+  it('counts a load as measured only when its linked console lines hold the ready line', async () => {
     const steps = [
-      ['mcp__playwright__browser_navigate', ready],
-      ['mcp__playwright__browser_navigate', 'no probe here'],
-      ['mcp__playwright__browser_navigate_back', 'no probe here either'],
-      ['mcp__playwright_b__browser_navigate', 'device B, no probe'],
-      ['mcp__playwright_b__browser_navigate_back', ready],
+      ['mcp__playwright__browser_navigate', navigated('/out/mcp/console-a.log#L1')],
+      // The ready line is on line 1 of this log, outside the lines this result links.
+      ['mcp__playwright__browser_navigate', navigated('/out/mcp/console-a.log#L2-L3')],
+      ['mcp__playwright__browser_navigate', navigated('/out/mcp/console-c.log#L1-L2')],
+      ['mcp__playwright__browser_navigate_back', navigated()],
+      ['mcp__playwright_b__browser_navigate', navigated('/out/mcp-b/console-b.log#L1-L3')],
+      ['mcp__playwright_b__browser_navigate_back', navigated('/out/mcp-b/gone.log#L1')],
     ] as const
-    expect(probeGaps(callsOf(steps))).toEqual({ loads: 5, missing: 3 })
+    expect(await probeGaps(callsOf(steps), readLog)).toEqual({ loads: 6, missing: 4 })
   })
 
-  it('ignores results of other tools, even when they quote the ready line', () => {
+  it('ignores results of other tools, even when they link a log with the ready line', async () => {
     const steps = [
-      ['mcp__playwright__browser_click', ready],
-      ['mcp__playwright__browser_navigate', ready],
+      ['mcp__playwright__browser_click', navigated('/out/mcp/console-a.log#L1')],
+      ['mcp__playwright__browser_navigate', navigated('/out/mcp/console-a.log#L1')],
       ['Write', 'ok'],
     ] as const
-    expect(probeGaps(callsOf(steps))).toEqual({ loads: 1, missing: 0 })
+    expect(await probeGaps(callsOf(steps), readLog)).toEqual({ loads: 1, missing: 0 })
   })
 })
 
@@ -689,11 +707,14 @@ describe('runSummary', () => {
     const unlisted = 'c9-unlisted-phone'
     await mkdir(join(outDir, unlisted))
     await writeFile(join(outDir, unlisted, 'session.json'), JSON.stringify(session({ charter: unlisted })))
+    const log = join(outDir, unlisted, 'mcp-console.log')
+    await writeFile(log, '[ 217ms] [ERROR] [qa-layout] ready @ /repo/.github/qa/layout-probe.js:242\n')
+    const loaded = (link: string) => `- Console: 1 errors, 0 warnings\n### Events\n- New console entries: ${link}`
     await writeFile(
       join(outDir, unlisted, 'transcript.json'),
       JSON.stringify([
-        ...navigation('mcp__playwright__browser_navigate', 'no probe'),
-        ...navigation('mcp__playwright__browser_navigate_back', '[qa-layout] ready'),
+        ...navigation('mcp__playwright__browser_navigate', loaded(`${log}#L1`)),
+        ...navigation('mcp__playwright__browser_navigate_back', '- Console: 0 errors, 0 warnings'),
       ]),
     )
     await writeFile(

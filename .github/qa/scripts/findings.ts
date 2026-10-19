@@ -382,7 +382,7 @@ const areaSeverity = {
  */
 export const severity = (finding: Finding): Severity => {
   const { type, evidence } = finding.oracle
-  if (type === 'console-error' || (type === 'layout' && /^\[qa-layout\] overflow-/.test(evidence))) return 'Low'
+  if (type === 'console-error' || (type === 'layout' && /\[qa-layout\] overflow-/.test(evidence))) return 'Low'
   if (type === 'lost-on-reload' || (type === 'page-error' && finding.area === 'chat')) return 'Urgent'
   // Everything else, an AI reporting that a feature failed included, is a broken feature: its area decides.
   return areaSeverity[finding.area]

@@ -278,6 +278,9 @@ describe('layout oracle', () => {
   test('an overflow is Low, a covered control takes its area severity', () => {
     expect(severity(layoutFinding('onboarding', '[qa-layout] overflow-text span "Long name"'))).toBe('Low')
     expect(severity(layoutFinding('onboarding', '[qa-layout] overflow-page body ""'))).toBe('Low')
+    // The model may quote the line the way browser_console_messages prints it.
+    const printed = '[ERROR] [qa-layout] overflow-text span "Long name" @ http://localhost:1424/x.js:209'
+    expect(severity(layoutFinding('onboarding', printed))).toBe('Low')
     expect(severity(layoutFinding('onboarding', '[qa-layout] covered button "Continue"'))).toBe('High')
     expect(severity(layoutFinding('skills', '[qa-layout] offscreen button "Save"'))).toBe('Medium')
   })
