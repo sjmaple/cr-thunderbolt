@@ -151,8 +151,12 @@ uses to judge the AI's answers) on every platform in `platforms.json`, with the 
 - A dispatch's `charters` input takes charter ids (every platform), session ids (one platform) and `free`, e.g.
   `c4-skills-projects,c2-chat-power-user-phone,free`. Canary legs follow the same selection.
 - Add a case by appending an object with a new `id` (it shifts the rotation once). `bun run test:qa` checks it.
-- A platform is one entry (an `id` without a hyphen, a viewport, an MCP config) and one explore leg. A native
-  platform also needs its driver and a new `viewport` value in the finding schema.
+- A platform is one entry (an `id` without a hyphen, a `driver`, a `runner`, a viewport, an MCP config, `realAi`)
+  and one explore leg. `ios` and `android` use the `maestro` driver and plan into `nativeLegs` and `nativeVerify`,
+  apart from the web `legs` and `verify`. The grid has two written exceptions, both in `skippedSessions` in
+  `legs.ts`: `c7-two-devices-ios` is left out because the macOS runner has no Docker for the Postgres and PowerSync
+  containers, and iOS sessions never use the real AI providers (`realAi: false`), so c3, c4, c5 and the free session
+  run there on the fake AI. Canaries stay on the web.
 - `free-*` legs are real-AI charters: two failures in three confirm, and they never go to the fix agent. One case
   on two platforms costs about $1.3 a week; each platform adds about half of that.
 

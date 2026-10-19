@@ -14,7 +14,9 @@ import {
   lintReproSpec,
   loadFindings,
   parseSession,
+  nativePlatformIds,
   platformIds,
+  platformOf,
   type RawFinding,
   realAiCharters,
   severity,
@@ -352,8 +354,10 @@ test('each charter names exactly the functions of its list, and says the AI is r
     const text = await Bun.file(join(import.meta.dir, `../charters/${charter}.md`)).text()
     const named = [...text.matchAll(/Functions?:((?:\s+`[\w-]+`[,.]?)+)/g)].flatMap(([, ids]) => ids.match(/[\w-]+/g))
     expect([...new Set(named)].sort(), charter).toEqual(list.map((fn) => fn.id).sort())
-    const real = platformIds.map((platform) => realAiCharters.has(`${charter}-${platform}`))
-    // A charter is real AI on every platform or on none.
+    const real = platformIds
+      .filter((platform) => platformOf(platform).realAi)
+      .map((platform) => realAiCharters.has(`${charter}-${platform}`))
+    // A charter is real AI on every platform that has real providers, or on none.
     expect(text.includes('the AI is **real**'), charter).toBe(real.every(Boolean))
     expect(new Set(real).size, charter).toBe(1)
   }
@@ -369,8 +373,16 @@ test('parseSession splits the platform off the last hyphen', () => {
   expect(() => parseSession('c1-first-run')).toThrow('unknown platform in session id: c1-first-run')
 })
 
+test('platformOf finds a platform and throws for an unknown id', () => {
+  expect(platformOf('ios')).toMatchObject({ driver: 'maestro', runner: 'macos-latest', realAi: false })
+  expect(() => platformOf('tablet')).toThrow('unknown platform: tablet')
+  expect(nativePlatformIds).toEqual(['ios', 'android'])
+})
+
 test('real-AI sessions carry their platform', () => {
   expect(realAiCharters.has('c3-models-providers-phone')).toBe(true)
+  expect(realAiCharters.has('c3-models-providers-ios')).toBe(false)
+  expect(realAiCharters.has('free-trip-planner-android')).toBe(true)
   expect(realAiCharters.has('c3-models-providers')).toBe(false)
   expect(realAiCharters.has('c2-chat-power-user-desktop')).toBe(false)
 })
@@ -380,14 +392,15 @@ test('a finding names a known platform', () => {
   expect(findingSchema.safeParse({ ...finding, viewport: 'tablet' }).success).toBe(false)
 })
 
-test('every free session is real AI, on a platform whose id is a finding viewport, and every case is complete', async () => {
-  for (const { id, viewport, mcp } of platforms) {
+test('every free session is real AI where the platform has real providers, and every case is complete', async () => {
+  for (const { id, driver, realAi, viewport, mcp } of platforms) {
     // A session id is free-<case>-<platform>; a platform id without hyphens keeps the case readable before it.
     expect(id).toMatch(/^[a-z]+$/)
-    expect(cases.every((c) => realAiCharters.has(`free-${c.id}-${id}`))).toBe(true)
+    expect(cases.every((c) => realAiCharters.has(`free-${c.id}-${id}`))).toBe(realAi)
     expect(findingSchema.safeParse({ ...finding, viewport: id }).success, id).toBe(true)
-    expect(viewport).toMatch(/^\d+x\d+$/)
-    expect(await Bun.file(join(import.meta.dir, '../../..', mcp)).exists()).toBe(true)
+    if (driver === 'playwright') expect(viewport).toMatch(/^\d+x\d+$/)
+    // The Maestro config arrives with the native tasks.
+    if (driver === 'playwright') expect(await Bun.file(join(import.meta.dir, '../../..', mcp)).exists()).toBe(true)
   }
   expect(new Set(cases.map((c) => c.id)).size).toBe(cases.length)
   for (const { id, who, goal, crosses, pt } of cases) {

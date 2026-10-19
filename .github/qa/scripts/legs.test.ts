@@ -3,6 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'bun:test'
+import { realAiCharters } from './findings'
 import { planLegs, selects } from './legs'
 
 const plan = (only: string[] = [], canaries: { charter: string }[] = []) =>
@@ -99,6 +100,70 @@ describe('planLegs', () => {
   it('replays a real-AI canary on the real providers', () => {
     const { verify } = plan(['c4-skills-projects'], [{ charter: 'c4-skills-projects-desktop' }])
     expect(verify.filter((v) => v.name.startsWith('canary')).map((v) => v.real)).toEqual([true, true])
+  })
+})
+
+describe('native platforms', () => {
+  it('runs every charter and the free session on every platform, minus the written exceptions', () => {
+    const { legs, nativeLegs, skipped } = plan()
+    const sessions = [...legs, ...nativeLegs].map((leg) => leg.charter)
+    for (const charter of ['c1-first-run', 'c2-chat-power-user', 'c6-settings-data', 'free-trip-planner'])
+      for (const platform of ['desktop', 'phone', 'ios', 'android'])
+        expect(sessions).toContain(`${charter}-${platform}`)
+    expect(sessions).not.toContain('c7-two-devices-ios')
+    expect(skipped).toEqual([{ session: 'c7-two-devices-ios', reason: expect.stringContaining('Postgres') }])
+  })
+
+  it('carries the runner and driver on native legs, and iOS never uses the real providers', () => {
+    const { nativeLegs } = plan()
+    expect(nativeLegs.find((leg) => leg.charter === 'c3-models-providers-ios')).toMatchObject({
+      runner: 'macos-latest',
+      driver: 'maestro',
+      real: false,
+      artifact: 'qa-ios',
+    })
+    expect(nativeLegs.find((leg) => leg.charter === 'c3-models-providers-android')).toMatchObject({
+      real: true,
+      artifact: 'qa-android-real',
+    })
+    expect(nativeLegs.find((leg) => leg.charter === 'c7-two-devices-android')).toMatchObject({
+      postgres: true,
+      artifact: 'qa-android-sync',
+      mcp: '.github/qa/mcp-maestro.json .github/qa/mcp-two-devices.json',
+    })
+  })
+
+  it('keeps native sessions out of the web legs and the web replay', () => {
+    const { legs, verify } = plan()
+    expect(legs.every((leg) => leg.driver === 'playwright' && leg.runner === 'ubuntu-latest')).toBe(true)
+    expect(verify.every((v) => v.runner === 'ubuntu-latest')).toBe(true)
+  })
+
+  it('plans no web legs for a native-only dispatch, and one replay leg per native artifact', () => {
+    const only = plan(['c1-first-run-ios'])
+    expect(only.legs).toEqual([])
+    expect(only.verify).toEqual([])
+    expect(only.nativeVerify).toEqual([
+      expect.objectContaining({ name: 'ios', runner: 'macos-latest', onboarding: true }),
+    ])
+    const android = plan(['c7-two-devices-android', 'c3-models-providers-android', 'c2-chat-power-user-android'])
+    expect(android.nativeVerify.map((v) => v.name).sort()).toEqual(['android', 'android-real', 'android-sync'])
+    expect(android.nativeVerify.find((v) => v.name === 'android-sync')).toMatchObject({ postgres: true })
+    expect(android.nativeVerify.find((v) => v.name === 'android-real')).toMatchObject({ real: true })
+    expect(android.nativeVerify.find((v) => v.name === 'android')).toMatchObject({ onboarding: false })
+    const withC1 = plan(['c1-first-run-android', 'c3-models-providers-android'])
+    expect(withC1.nativeVerify.find((v) => v.name === 'android-real')).toMatchObject({ onboarding: true })
+  })
+
+  it('treats a skipped session as an unknown id, and reports it only when the dispatch selects it', () => {
+    expect(() => plan(['c7-two-devices-ios'])).toThrow('Unknown charter c7-two-devices-ios')
+    expect(plan(['c7-two-devices']).skipped).toHaveLength(1)
+    expect(plan(['c2-chat-power-user']).skipped).toEqual([])
+  })
+
+  it('runs real-AI sessions on the platforms that have real providers only', () => {
+    expect(realAiCharters.has('c3-models-providers-android')).toBe(true)
+    expect(realAiCharters.has('c3-models-providers-ios')).toBe(false)
   })
 })
 

@@ -6,8 +6,7 @@
 
 import { readFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import platforms from '../platforms.json'
-import { parseSession, realAiCharters } from './findings'
+import { type Platform, parseSession, platformIds, platformOf, realAiCharters } from './findings'
 
 /** One explore session of the weekly run, as the workflow's matrix reads it (`charter` is the session id). */
 export type Leg = {
@@ -17,6 +16,9 @@ export type Leg = {
   artifact: string
   mcp: string
   viewport: string
+  platform: string
+  driver: Platform['driver']
+  runner: string
   onboarding: boolean
   real: boolean
   postgres: boolean
@@ -25,6 +27,9 @@ export type Leg = {
 /** One replay or judge job of the weekly run. */
 export type VerifyLeg = {
   name: string
+  /** The platform id of a native leg, `web` for the web legs, which replay desktop and phone together. */
+  platform: string
+  runner: string
   out: string
   artifact: string
   dist: string
@@ -36,7 +41,6 @@ export type VerifyLeg = {
 const baseLeg = {
   dist: 'qa-dist',
   out: 'qa-out',
-  artifact: 'qa-explore',
   onboarding: false,
   real: false,
   postgres: false,
@@ -50,8 +54,26 @@ const charters: (Partial<Leg> & { charter: string })[] = [
   { charter: 'c4-skills-projects' },
   { charter: 'c5-widgets-connections' },
   { charter: 'c6-settings-data' },
-  { charter: 'c7-two-devices', postgres: true, artifact: 'qa-sync' },
+  { charter: 'c7-two-devices', postgres: true },
 ]
+
+/**
+ * Sessions the grid leaves out, with the reason. `planLegs` drops them before it reads `only`, so asking for one fails
+ * as an unknown id, and it reports the ones a dispatch would have run.
+ */
+const skippedSessions = [
+  {
+    session: 'c7-two-devices-ios',
+    reason:
+      'The macOS runner has no Docker, so it cannot run the Postgres and PowerSync containers the second device needs.',
+  },
+]
+
+/** The artifact a leg's session uploads: the web names are `qa-<kind>`, a native platform's `qa-<id>[-<kind>]`. */
+const artifactName = (platform: Platform, kind: 'explore' | 'sync' | 'real') => {
+  if (platform.driver === 'playwright') return `qa-${kind}`
+  return kind === 'explore' ? `qa-${platform.id}` : `qa-${platform.id}-${kind}`
+}
 
 /**
  * Whether a dispatch's `only` list picks this session. A session id picks one session, a charter id picks it on every
@@ -64,15 +86,27 @@ export const selects = (only: string[], session: string) =>
   only.includes(parseSession(session).charter) ||
   (session.startsWith('free-') && only.includes('free'))
 
-/** Every session of the week on every platform, then one extra leg per canary on the canary build. */
+/** Every session of the week on every platform, then one extra leg per canary on the canary build. Canaries are web charters only. */
 const allLegs = (journey: string, canaries: { charter: string }[]): Leg[] => {
   const sessions = [...charters, { charter: `free-${journey}` }].flatMap((c) =>
-    platforms.map((platform): Leg => {
+    platformIds.map(platformOf).map((platform): Leg => {
       const session = `${c.charter}-${platform.id}`
       // c7's second browser is added to whichever platform's config the session would use.
       const mcp = c.charter === 'c7-two-devices' ? `${platform.mcp} .github/qa/mcp-two-devices.json` : platform.mcp
-      const leg = { ...baseLeg, ...c, charter: session, mcp, viewport: platform.viewport }
-      return realAiCharters.has(session) ? { ...leg, real: true, artifact: 'qa-real' } : leg
+      const real = realAiCharters.has(session)
+      const kind = real ? 'real' : c.postgres ? 'sync' : 'explore'
+      return {
+        ...baseLeg,
+        ...c,
+        charter: session,
+        mcp,
+        viewport: platform.viewport,
+        platform: platform.id,
+        driver: platform.driver,
+        runner: platform.runner,
+        artifact: artifactName(platform, kind),
+        real,
+      }
     }),
   )
   const canaryLegs = canaries.flatMap((canary) =>
@@ -88,6 +122,8 @@ const verifyLegs = (legs: Leg[]): VerifyLeg[] => {
   const has = (artifact: string) => legs.some((leg) => leg.artifact === artifact)
   const weekly: VerifyLeg = {
     name: 'weekly',
+    platform: 'web',
+    runner: platformOf('desktop').runner,
     out: 'qa-out',
     artifact: 'qa-explore',
     dist: 'qa-dist',
@@ -102,7 +138,16 @@ const verifyLegs = (legs: Leg[]): VerifyLeg[] => {
   const canary = [
     { name: 'canary', out: 'qa-out-canary', dist: 'qa-dist-canary' },
     { name: 'canary-baseline', out: 'qa-out-canary-baseline', dist: 'qa-dist' },
-  ].map((leg): VerifyLeg => ({ ...leg, artifact: 'qa-canary', onboarding: false, postgres: false, real: canaryReal }))
+  ].map(
+    (leg): VerifyLeg => ({
+      ...weekly,
+      ...leg,
+      artifact: 'qa-canary',
+      onboarding: false,
+      postgres: false,
+      real: canaryReal,
+    }),
+  )
   return [
     weekly,
     ...(has('qa-sync') ? [sync] : []),
@@ -111,18 +156,45 @@ const verifyLegs = (legs: Leg[]): VerifyLeg[] => {
   ]
 }
 
+/** One replay leg per native artifact, on its platform's runner, with the onboarding build when any leg of the platform has it. */
+const nativeVerifyLegs = (legs: Leg[]): VerifyLeg[] =>
+  legs
+    .filter((leg, i) => legs.findIndex((other) => other.artifact === leg.artifact) === i)
+    .map((leg) => ({
+      name: leg.artifact.replace(/^qa-/, ''),
+      platform: leg.platform,
+      runner: leg.runner,
+      out: 'qa-out',
+      artifact: leg.artifact,
+      dist: 'qa-dist',
+      onboarding: legs.some((other) => other.platform === leg.platform && other.onboarding),
+      postgres: leg.postgres,
+      real: leg.real,
+    }))
+
 /**
- * The weekly run's plan: the legs to explore (`only` narrows them, see `selects`), the replay legs and the judge
- * legs. Throws on an id in `only` that names no session, charter or `free`.
+ * The weekly run's plan: the web legs and the native ones to explore (`only` narrows them, see `selects`), their
+ * replay legs, the web judge legs, and the sessions the grid skips for this dispatch. Throws on an id in `only` that
+ * names no session, charter or `free`; a session in `skippedSessions` names none.
  */
 export const planLegs = (input: { only: string[]; journey: string; canaries: { charter: string }[] }) => {
-  const all = allLegs(input.journey, input.canaries)
+  const skippedIds = new Set(skippedSessions.map((s) => s.session))
+  const all = allLegs(input.journey, input.canaries).filter((leg) => !skippedIds.has(leg.charter))
   const known = new Set(['free', ...all.flatMap((leg) => [leg.charter, parseSession(leg.charter).charter])])
   const unknown = input.only.filter((id) => !known.has(id))
   if (unknown.length > 0) throw new Error(`Unknown charter ${unknown.join(' ')}`)
-  const legs = all.filter((leg) => selects(input.only, leg.charter))
-  const verify = verifyLegs(legs)
-  return { legs, verify, judge: verify.filter((v) => v.name === 'weekly' || v.name === 'canary') }
+  const selected = all.filter((leg) => selects(input.only, leg.charter))
+  const legs = selected.filter((leg) => leg.driver === 'playwright')
+  const nativeLegs = selected.filter((leg) => leg.driver === 'maestro')
+  const verify = legs.length > 0 ? verifyLegs(legs) : []
+  return {
+    legs,
+    nativeLegs,
+    verify,
+    nativeVerify: nativeVerifyLegs(nativeLegs),
+    judge: verify.filter((v) => v.name === 'weekly' || v.name === 'canary'),
+    skipped: skippedSessions.filter((s) => selects(input.only, s.session)),
+  }
 }
 
 if (import.meta.main) {
@@ -135,12 +207,12 @@ if (import.meta.main) {
     // Commas and spaces both separate ids.
     const only = values.charters.split(/[ ,]+/).filter(Boolean)
     if (values.charters && only.length === 0) throw new Error(`No charter id in '${values.charters}'`)
-    const { legs, verify, judge } = planLegs({
+    const plan = planLegs({
       only,
       journey: values.journey,
       canaries: JSON.parse(await readFile(values.canaries, 'utf8')),
     })
-    for (const [name, value] of Object.entries({ legs, verify, judge })) console.log(`${name}=${JSON.stringify(value)}`)
+    for (const [name, value] of Object.entries(plan)) console.log(`${name}=${JSON.stringify(value)}`)
   } catch (error) {
     // A workflow annotation, so the run's summary shows the reason.
     console.log(`::error::${error instanceof Error ? error.message : error}`)

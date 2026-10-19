@@ -38,8 +38,33 @@ const oracleTypes = [
   'ai-reported-failure',
 ] as const
 
+/** One entry of `platforms.json`. The native ones (`maestro`) also name the app they drive. */
+export type Platform = {
+  id: string
+  driver: 'playwright' | 'maestro'
+  runner: string
+  viewport: string
+  mcp: string
+  /** Whether the platform's sessions can use the app's real AI providers. */
+  realAi: boolean
+  appId?: string
+  appName?: string
+}
+
 /** The platform ids of `platforms.json`. They never contain a hyphen, so a session id ends at the last one. */
 export const platformIds = platforms.map((platform) => platform.id)
+
+/** The ids of the platforms the Maestro driver runs. */
+export const nativePlatformIds = (platforms as Platform[])
+  .filter((platform) => platform.driver === 'maestro')
+  .map((platform) => platform.id)
+
+/** The `platforms.json` entry for an id; throws for an unknown id. */
+export const platformOf = (id: string): Platform => {
+  const platform = (platforms as Platform[]).find((entry) => entry.id === id)
+  if (!platform) throw new Error(`unknown platform: ${id}`)
+  return platform
+}
 
 /** An explore session: `<charter>-<platform>`, or `free-<case>-<platform>` for a free session. */
 export type Session = { charter: string; platform: string }
@@ -52,17 +77,19 @@ export const parseSession = (session: string): Session => {
   return { charter: session.slice(0, cut), platform }
 }
 
+const realAiPlatformIds = platformIds.filter((id) => platformOf(id).realAi)
+
 /**
- * Sessions explored with the app's real AI providers: three charters on every platform, and the free session of
- * every case on every platform (`free-<case>-<platform>`). Their findings replay on a stack with the real providers
- * too, where two failed runs in three confirm one, and they never go to the fix agent, whose check runs on the fake
- * AI. The workflow reads this set to plan its legs.
+ * Sessions explored with the app's real AI providers: three charters and the free session of every case
+ * (`free-<case>-<platform>`), on every platform with `realAi` (iOS has none). Their findings replay on a stack with
+ * the real providers too, where two failed runs in three confirm one, and they never go to the fix agent, whose
+ * check runs on the fake AI. The workflow reads this set to plan its legs.
  */
 export const realAiCharters = new Set([
   ...['c3-models-providers', 'c4-skills-projects', 'c5-widgets-connections'].flatMap((charter) =>
-    platformIds.map((platform) => `${charter}-${platform}`),
+    realAiPlatformIds.map((platform) => `${charter}-${platform}`),
   ),
-  ...journeys.flatMap((journey) => platformIds.map((platform) => `free-${journey.id}-${platform}`)),
+  ...journeys.flatMap((journey) => realAiPlatformIds.map((platform) => `free-${journey.id}-${platform}`)),
 ])
 
 export type Area = (typeof areas)[number]
