@@ -107,24 +107,78 @@ export const screenshotTaken = (transcript: TranscriptMessage[], file: string): 
   return blocks.some((b) => b.type === 'tool_result' && shots.has(b.tool_use_id) && b.content.includes(file))
 }
 
+const fileTools = new Set(['Write', 'Edit'])
+
+/** Whether the explorer's own Write or Edit tool wrote `file`: the browser's screenshot may then be gone. */
+const fileToolWrote = (transcript: TranscriptMessage[], file: string) =>
+  transcript
+    .flatMap((m) => m.message.content)
+    .some(
+      (b) =>
+        b.type === 'tool_use' &&
+        fileTools.has(b.name) &&
+        b.input?.file_path !== undefined &&
+        resolve(b.input.file_path).endsWith(`/${file}`),
+    )
+
+// The Claude API's image limits (https://platform.claude.com/docs/en/build-with-claude/vision): the size once
+// base64-encoded and the pixels per side. Over either, the judge call fails with a 400.
+const imageLimit = { base64Bytes: 10_000_000, side: 8_000 }
+
+type ImageInfo = { mediaType: 'image/png' | 'image/jpeg'; width: number; height: number }
+
+const pngSignature = Buffer.from('89504e470d0a1a0a', 'hex')
+
+/** The size in a JPEG's first frame header: an SOFn marker, C0 to CF except DHT (C4), JPG (C8) and DAC (CC). */
+const jpegSize = (bytes: Buffer) => {
+  for (let at = 2; at + 9 <= bytes.length; at += 2 + bytes.readUInt16BE(at + 2)) {
+    if (bytes[at] !== 0xff) return undefined
+    const marker = bytes[at + 1]
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      return { height: bytes.readUInt16BE(at + 5), width: bytes.readUInt16BE(at + 7) }
+    }
+  }
+  return undefined
+}
+
+/** The media type and size an image's own bytes declare, whatever its name says; undefined unless PNG or JPEG. */
+const imageInfo = (bytes: Buffer): ImageInfo | undefined => {
+  if (bytes.length >= 24 && bytes.subarray(0, 8).equals(pngSignature)) {
+    return { mediaType: 'image/png', width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
+  }
+  const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 ? jpegSize(bytes) : undefined
+  return jpeg && { mediaType: 'image/jpeg', ...jpeg }
+}
+
 /**
- * A visual finding's screenshot under `outDir`. The path is model-written, so its schema regex is checked on every
+ * A visual finding's screenshot under `outDir`. The charter dir and the model-written path are checked on every
  * read: no finding, and no edited candidates file, can make replay or the judge read a file outside the session dir.
  */
-const screenshotPath = (outDir: string, file: FindingFile) =>
-  join(outDir, file.charterDir, screenshotFile.parse(file.finding.screenshot))
+const screenshotPath = (outDir: string, file: FindingFile) => {
+  if (!/^[\w-]+$/.test(file.charterDir)) throw new Error(`not a session dir: ${file.charterDir}`)
+  return join(outDir, file.charterDir, screenshotFile.parse(file.finding.screenshot))
+}
 
-/** Why a visual finding's screenshot does not prove it, or undefined when it does. */
+/**
+ * Why a visual finding's screenshot does not prove it, or undefined when it does. The file must be one the browser
+ * wrote, and one the judge can send: a PNG or JPEG within the API's limits.
+ */
 const screenshotProblem = async (outDir: string, file: FindingFile) => {
-  const screenshot = screenshotFile.parse(file.finding.screenshot)
-  if (!(await Bun.file(join(outDir, file.charterDir, screenshot)).exists())) return 'screenshot not found'
+  const path = screenshotPath(outDir, file)
+  const screenshot = relative(join(outDir, file.charterDir), path)
+  if (!(await Bun.file(path).exists())) return 'screenshot not found'
   // A session cut short can leave no transcript, or a broken one: nothing then proves the screenshot.
   const transcript: TranscriptMessage[] = await Bun.file(join(outDir, file.charterDir, 'transcript.json'))
     .json()
     .catch(() => [])
-  return screenshotTaken(transcript, screenshot)
-    ? undefined
-    : 'screenshot not taken by the browser tool in this session'
+  if (!screenshotTaken(transcript, screenshot)) return 'screenshot not taken by the browser tool in this session'
+  if (fileToolWrote(transcript, screenshot)) return 'screenshot written by a file tool, not the browser'
+  const bytes = await readFile(path)
+  const image = imageInfo(bytes)
+  if (!image) return 'screenshot is not a PNG or JPEG image'
+  if (Math.ceil(bytes.length / 3) * 4 > imageLimit.base64Bytes) return "screenshot over the API's 10 MB image limit"
+  if (Math.max(image.width, image.height) > imageLimit.side) return "screenshot over the API's 8000 px image limit"
+  return undefined
 }
 
 /**
@@ -226,8 +280,8 @@ const loadErrors = async (specs: string[], outDir: string, runReplay: RunReplay)
  * `.github/qa/control/stack.spec.ts`; if any of its runs fails, the stack is broken, no replayed finding is confirmed
  * and `stack_unhealthy` says why. A spec that fails to load stops the whole Playwright run, so such specs are dropped
  * at gate `lint` and the rest replay again without them. A `visual` finding has no spec and takes no place under the
- * cap: it is confirmed when its screenshot exists and the session's transcript shows the browser tool took it, and
- * dropped at gate `lint` otherwise, whatever the stack's health. Writes and returns `<outDir>/candidates.json`.
+ * cap: it is confirmed when `screenshotProblem` finds nothing wrong with its screenshot, and dropped at gate `lint`
+ * otherwise, whatever the stack's health. Writes and returns `<outDir>/candidates.json`.
  * Needs NO secrets and must run without any: the specs were written by a model that read untrusted pages, and the
  * spec lint is defence in depth, not the boundary.
  */
@@ -329,13 +383,13 @@ export const judge = async (outDir: string, create: CreateMessage = createMessag
       const finding = `<finding>\n${JSON.stringify(candidate.finding, null, 2)}\n</finding>`
       if (candidate.finding.oracle.type === 'visual') {
         const path = screenshotPath(outDir, candidate)
+        const bytes = await readFile(path)
+        // Replay already dropped anything else, so this only fails on a screenshot changed after replay.
+        const mediaType = imageInfo(bytes)?.mediaType
+        if (!mediaType) throw new Error(`not a PNG or JPEG image: ${path}`)
         const image: Anthropic.ImageBlockParam = {
           type: 'image',
-          source: {
-            type: 'base64',
-            media_type: path.endsWith('.png') ? 'image/png' : 'image/jpeg',
-            data: (await readFile(path)).toString('base64'),
-          },
+          source: { type: 'base64', media_type: mediaType, data: bytes.toString('base64') },
         }
         const content = [image, { type: 'text' as const, text: finding }]
         return { candidate, content, cost: worstJudgeCost(system, finding, 1) }

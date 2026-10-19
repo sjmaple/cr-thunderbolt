@@ -73,7 +73,28 @@ const callsOf = (steps: (readonly [string, string])[]): TranscriptMessage[] =>
     { message: { content: [{ type: 'tool_result' as const, tool_use_id: `t${i}`, content: result }] } },
   ])
 
-const pngBytes = Buffer.from('not really a png')
+/** The start of a PNG of that size: its signature and IHDR chunk, all the screenshot checks read. */
+const pngOf = (width: number, height: number) => {
+  const ihdr = Buffer.alloc(8)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  return Buffer.concat([Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'), ihdr])
+}
+
+/**
+ * The start of a JPEG of that size: SOI, an APP0 and a DHT segment to skip (DHT's marker, C4, sits among the
+ * frame-header markers), then the SOF0 frame header.
+ */
+const jpegOf = (width: number, height: number) => {
+  const sof = Buffer.from('ffc0001108000000000301', 'hex')
+  sof.writeUInt16BE(height, 5)
+  sof.writeUInt16BE(width, 7)
+  const app0 = 'ffe000104a46494600010100000100010000'
+  const dht = 'ffc4000900000000000000'
+  return Buffer.concat([Buffer.from(`ffd8${app0}${dht}`, 'hex'), sof])
+}
+
+const pngBytes = pngOf(1280, 800)
 
 let outDir: string
 let qaDir: string
@@ -421,6 +442,79 @@ describe('replay', () => {
     ])
   })
 
+  /** A Write or Edit call on `file_path`, as transcript.jq keeps it, and its result. */
+  const fileTool = (name: string, id: string, file_path: string): TranscriptMessage[] => [
+    { message: { content: [{ type: 'tool_use', id, name, input: { file_path } }] } },
+    { message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] } },
+  ]
+
+  /** Writes each screenshot under c2-chat/mcp/, a visual finding named after it, and a transcript taking them all. */
+  const writeShots = async (shots: Record<string, Buffer>, extra: TranscriptMessage[] = []) => {
+    const steps = Object.keys(shots).map(
+      (name) => ['mcp__playwright__browser_take_screenshot', screenshotResult(`${sessionDir}/mcp`, name)] as const,
+    )
+    await Bun.write(join(outDir, 'c2-chat/transcript.json'), JSON.stringify([...callsOf(steps), ...extra]))
+    for (const [name, bytes] of Object.entries(shots)) {
+      await Bun.write(join(outDir, 'c2-chat/mcp', name), bytes)
+      await writeFinding(makeVisual(name.replace(/\.\w+$/, ''), `mcp/${name}`), null)
+    }
+  }
+
+  const replayDrops = async () => {
+    const result = await replay(outDir, fakeRunner({}, []), qaDir)
+    return {
+      confirmed: titles(result.confirmed),
+      dropped: droppedAt(result, 'lint').map((entry) => [entry.file.id, entry.reason]),
+    }
+  }
+
+  test('replay drops a visual finding whose screenshot a file tool wrote after the browser', async () => {
+    await writeShots({ 'written.png': pngBytes, 'edited.png': pngBytes, 'kept.png': pngBytes }, [
+      ...fileTool('Write', 'w0', `${sessionDir}/mcp/written.png`),
+      ...fileTool('Edit', 'w1', `${sessionDir}/mcp/edited.png`),
+      ...fileTool('Write', 'w2', `${sessionDir}/findings/kept.json`),
+    ])
+
+    expect(await replayDrops()).toEqual({
+      confirmed: ['kept'],
+      dropped: [
+        ['edited', 'screenshot written by a file tool, not the browser'],
+        ['written', 'screenshot written by a file tool, not the browser'],
+      ],
+    })
+  })
+
+  test('replay drops a visual finding whose screenshot is not a PNG or a JPEG', async () => {
+    await writeShots({ 'text.png': Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'), 'kept.png': pngBytes })
+
+    expect(await replayDrops()).toEqual({
+      confirmed: ['kept'],
+      dropped: [['text', 'screenshot is not a PNG or JPEG image']],
+    })
+  })
+
+  test("replay drops a visual finding whose screenshot is over the API's 10 MB image limit", async () => {
+    // 7.5 MB of bytes is 10 MB once base64-encoded, which is how the API measures it.
+    await writeShots({ 'huge.png': Buffer.concat([pngBytes, Buffer.alloc(7_500_000)]), 'kept.png': pngBytes })
+
+    expect(await replayDrops()).toEqual({
+      confirmed: ['kept'],
+      dropped: [['huge', "screenshot over the API's 10 MB image limit"]],
+    })
+  })
+
+  test("replay drops a visual finding whose screenshot is over the API's 8000 px image limit", async () => {
+    await writeShots({ 'tall.png': pngOf(1280, 8001), 'wide.jpeg': jpegOf(8001, 600), 'kept.jpeg': jpegOf(1280, 8000) })
+
+    expect(await replayDrops()).toEqual({
+      confirmed: ['kept'],
+      dropped: [
+        ['tall', "screenshot over the API's 8000 px image limit"],
+        ['wide', "screenshot over the API's 8000 px image limit"],
+      ],
+    })
+  })
+
   test('a screenshot counts only when a browser screenshot result of the same device names it', () => {
     const transcript = callsOf([
       ['mcp__playwright__browser_take_screenshot', screenshotResult(`${sessionDir}/mcp`, 'page-a.png')],
@@ -510,36 +604,48 @@ describe('judge', () => {
       }
     }
 
-  test('the judge sees the screenshot of a visual finding, and the finding without a spec', async () => {
+  test('the judge sees a visual finding without a spec, and its screenshot typed by its bytes', async () => {
     const png = makeVisual('png')
-    const jpeg = makeVisual('jpeg', 'mcp-b/page-1.jpg')
+    // A JPEG saved under a .png name: the bytes decide the media type, not the extension.
+    const jpeg = makeVisual('jpeg', 'mcp-b/page-1.png')
     await writeCandidates({ confirmed: [png, jpeg].map(visualCandidate), flaky: [], observations: [], dropped: [] })
+    const jpegBytes = jpegOf(390, 844)
+    await Bun.write(join(outDir, 'c2-chat/mcp-b/page-1.png'), jpegBytes)
     const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
 
     const result = await judge(outDir, recordingCreate(calls), qaDir)
 
     expect(titles(result.confirmed)).toEqual(['png', 'jpeg'])
-    const image = (mediaType: 'image/png' | 'image/jpeg'): Anthropic.ImageBlockParam => ({
+    const image = (mediaType: 'image/png' | 'image/jpeg', bytes: Buffer): Anthropic.ImageBlockParam => ({
       type: 'image',
-      source: { type: 'base64', media_type: mediaType, data: pngBytes.toString('base64') },
+      source: { type: 'base64', media_type: mediaType, data: bytes.toString('base64') },
     })
     expect(calls.map((call) => call.messages[0].content)).toEqual([
-      [image('image/png'), { type: 'text', text: `<finding>\n${JSON.stringify(png, null, 2)}\n</finding>` }],
-      [image('image/jpeg'), { type: 'text', text: `<finding>\n${JSON.stringify(jpeg, null, 2)}\n</finding>` }],
+      [image('image/png', pngBytes), { type: 'text', text: `<finding>\n${JSON.stringify(png, null, 2)}\n</finding>` }],
+      [
+        image('image/jpeg', jpegBytes),
+        { type: 'text', text: `<finding>\n${JSON.stringify(jpeg, null, 2)}\n</finding>` },
+      ],
     ])
   })
 
   test('the judge never reads a screenshot path that leaves the session dir', async () => {
-    // A candidates.json written by anything but replay: the file exists, one level above the session dir.
-    const outside = { ...visualCandidate(makeVisual('escape')), finding: makeVisual('escape', '../secret.png') }
+    // A candidates.json written by anything but replay. Both files exist, one level above the session dir.
     await Bun.write(join(outDir, 'secret.png'), pngBytes)
-    await Bun.write(
-      join(outDir, 'candidates.json'),
-      JSON.stringify({ confirmed: [outside], flaky: [], observations: [], dropped: [] }),
-    )
+    await Bun.write(join(outDir, 'mcp/page-1.png'), pngBytes)
+    const outside = [
+      { ...visualCandidate(makeVisual('escape')), finding: makeVisual('escape', '../secret.png') },
+      { ...visualCandidate(makeVisual('root')), charterDir: '.', finding: makeVisual('root', 'mcp/page-1.png') },
+    ]
     const calls: Anthropic.MessageCreateParamsNonStreaming[] = []
 
-    await expect(judge(outDir, recordingCreate(calls), qaDir)).rejects.toThrow()
+    for (const candidate of outside) {
+      await Bun.write(
+        join(outDir, 'candidates.json'),
+        JSON.stringify({ confirmed: [candidate], flaky: [], observations: [], dropped: [] }),
+      )
+      await expect(judge(outDir, recordingCreate(calls), qaDir)).rejects.toThrow()
+    }
     expect(calls).toEqual([])
   })
 

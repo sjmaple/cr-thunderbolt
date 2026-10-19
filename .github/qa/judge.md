@@ -34,11 +34,12 @@ Drop it when any of these hold:
 - It has no user-visible effect and no error the app raises.
 - You cannot tell from the evidence which of the above applies.
 
-A `visual` finding has no repro spec and no replay. It comes with the screenshot the QA agent took when it saw the
-problem, and the browser tool is known to have taken that screenshot in the session. Judge it by the screenshot
-alone: keep it only when the screenshot shows a defect a user would notice, such as a covered control, cut-off
-text, overlapping elements or a broken layout. Drop it when the defect is a matter of taste, or when the screenshot
-does not show what the finding describes.
+A `visual` finding has no repro spec and no replay. It comes with the screenshot the QA agent says it took when it
+saw the problem. Code checked that the session's browser saved a screenshot under that name, but the agent could
+still have changed the file afterwards, so the screenshot is evidence to weigh, like the rest of the finding. Judge
+it by the screenshot alone: keep it only when the screenshot shows a defect a user would notice, such as a covered
+control, cut-off text, overlapping elements or a broken layout. Drop it when the defect is a matter of taste, or
+when the screenshot does not show what the finding describes.
 
 An `ai-reported-failure` finding quotes the app's own AI saying it could not do something. Keep it only when, besides
 the rules above:

@@ -80,8 +80,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`); 1 or 2 are flaky
    (report only), 0 is dropped. c7 replays on Postgres + PowerSync, the real-AI charters against the real providers,
    the rest on pglite with the fake AI. A `visual` finding skips the lint and Playwright and takes no place under
-   the replay cap: it is confirmed when its screenshot exists and the session's transcript shows a browser
-   screenshot result naming it, and dropped otherwise.
+   the replay cap. It is confirmed when its screenshot exists, a browser screenshot result in the session's
+   transcript names it, no Write or Edit call touched it, and it is a PNG or JPEG within the API's image limits
+   (10 MB base64-encoded, 8000 px per side). Otherwise it is dropped.
 4. **judge** (`verify.ts judge`): one Opus call per confirmed finding with `judge.md` and `known-issues.md`; a
    `visual` finding is judged on its screenshot. The default answer is drop. Writes `verified.json`.
 5. **file** (`file-findings.ts`): fingerprint dedupe, severity table, ticket caps and roll-ups, secret refusal.
