@@ -14,7 +14,7 @@ import { isSyncEnabled } from './sync-state'
 import { getDeviceId } from '@/lib/auth-token'
 import { AppSchema, drizzleSchema } from './schema'
 import { ThunderboltConnector } from './connector'
-import { getPlatform, getWebBrowser } from '@/lib/platform'
+import { deleteIndexedDbDatabase, getPlatform, getWebBrowser, hasIndexedDbDatabase, hasOpfsFile } from '@/lib/platform'
 import { ThunderboltPowerSyncDatabase } from './ThunderboltPowerSyncDatabase'
 import {
   getMsSinceLastDownload,
@@ -77,22 +77,43 @@ export const waitForOwnDeviceRow = async (powerSync: CommonPowerSyncDatabase, si
   }
 }
 
+/** The database filename PowerSync opens: the OPFS file, or the IndexedDB database name. */
+const toDbFilename = (path: string) => (path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path)
+
+/**
+ * OPFS when usable, except on a `default`-config device whose data already lives in IndexedDB:
+ * it stays there, so switching never drops local-only rows or queued uploads, until a reset
+ * leaves an OPFS database file behind (`resetAppDir`).
+ * @internal Exported for testing
+ */
+export const shouldUseOpfs = async (
+  path: string,
+  config: PowerSyncDatabaseConfig,
+  storage: { opfsRoot?: Pick<FileSystemDirectoryHandle, 'getFileHandle'>; idb?: Pick<IDBFactory, 'databases'> } = {},
+): Promise<boolean> => {
+  // `getDatabasePath` returns this sentinel when OPFS is unavailable.
+  if (path === ':memory:') {
+    return false
+  }
+  const dbFilename = toDbFilename(path)
+  if (config === 'safari-tauri' || (await hasOpfsFile(dbFilename, storage.opfsRoot))) {
+    return true
+  }
+  return !(await hasIndexedDbDatabase(dbFilename, storage.idb))
+}
+
 /**
  * @internal Exported for testing
- * @param opfsAvailable - Whether OPFS (`navigator.storage.getDirectory`) is actually usable on this
- * platform. Only affects the 'safari-tauri' config: its VFS and whether sync runs in a worker or
- * in the tab — see the comment below.
+ * @param useOpfs - `OPFSCoopSyncVFS` rather than `IDBBatchAtomicVFS` (see `shouldUseOpfs`). On
+ * 'safari-tauri' it also decides whether sync runs in a worker or in the tab.
  */
-export const getPowerSyncOptions = (
-  path: string,
-  config: PowerSyncDatabaseConfig = getPowerSyncDatabaseConfig(),
-  opfsAvailable = true,
-) => {
-  const dbFilename = path.includes('/') ? path.split('/').pop() || 'thunderbolt.db' : path
+export const getPowerSyncOptions = (path: string, config: PowerSyncDatabaseConfig, useOpfs: boolean) => {
+  const dbFilename = toDbFilename(path)
+  const vfs = useOpfs ? WASQLiteVFS.OPFSCoopSyncVFS : WASQLiteVFS.IDBBatchAtomicVFS
 
   if (config === 'default') {
     return {
-      database: { dbFilename },
+      database: { dbFilename, vfs },
       schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
       // Always use the custom SharedWorker that runs sync data through the encryption middleware.
       // The middleware is data-driven (checks __enc: prefix per-value), so it safely passes through plaintext
@@ -130,8 +151,8 @@ export const getPowerSyncOptions = (
   return {
     database: {
       dbFilename,
-      vfs: opfsAvailable ? WASQLiteVFS.OPFSCoopSyncVFS : WASQLiteVFS.IDBBatchAtomicVFS,
-      enableMultiTabs: opfsAvailable,
+      vfs,
+      enableMultiTabs: useOpfs,
       worker: '/@powersync/worker.js',
     },
     schema: AppSchema as unknown as WebPowerSyncDatabaseOptions['schema'],
@@ -163,6 +184,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
   private hiddenAt: number | null = null
   private _isReconnecting = false
   private versionBlockHandler: (() => void) | null = null
+  private vfs: WASQLiteVFS | null = null
 
   get db(): AnyDrizzleDatabase {
     if (!this._db) {
@@ -189,10 +211,24 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       return // Already initialized
     }
 
-    // `getDatabasePath` (called before `initialize`) already probes real OPFS availability and
-    // returns the ':memory:' sentinel when it's unavailable — reuse that instead of re-probing.
-    const opfsAvailable = path !== ':memory:'
-    const options = getPowerSyncOptions(path, getPowerSyncDatabaseConfig(), opfsAvailable)
+    const config = getPowerSyncDatabaseConfig()
+    const options = getPowerSyncOptions(path, config, await shouldUseOpfs(path, config))
+    this.vfs = options.database.vfs
+    console.info(
+      this.vfs === WASQLiteVFS.OPFSCoopSyncVFS
+        ? `[PowerSync] Storage: OPFS /${options.database.dbFilename}`
+        : `[PowerSync] Storage: IndexedDB database "${options.database.dbFilename}"`,
+    )
+    // A reset deletes the IndexedDB database, but another tab holding it open can delay that.
+    if (
+      this.vfs === WASQLiteVFS.OPFSCoopSyncVFS &&
+      config === 'default' &&
+      (await hasIndexedDbDatabase(options.database.dbFilename))
+    ) {
+      void deleteIndexedDbDatabase(options.database.dbFilename).catch((error) =>
+        console.error('[PowerSync] Failed to delete the old IndexedDB database:', error),
+      )
+    }
 
     // Always use ThunderboltPowerSyncDatabase so sync data runs through the encryption middleware.
     // The middleware is data-driven (checks __enc: prefix), so it's a no-op when E2EE is disabled.
@@ -323,7 +359,7 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
       this._isConnected = true
       console.info(`[PowerSync] Connected (total ${Math.round(performance.now() - connectStartedAt)}ms)`)
       this.logFullSyncWhenReady(connectStartedAt)
-      startSyncStatusListener(this.powerSync, getPowerSyncDatabaseConfig())
+      startSyncStatusListener(this.powerSync, getPowerSyncDatabaseConfig(), this.vfs)
       trackSyncEvent('sync_connect')
       this.startVisibilityReconnect()
     } catch (error) {
@@ -534,6 +570,8 @@ export class PowerSyncDatabaseImpl implements DatabaseInterface {
     stopSyncStatusListener()
     if (this.powerSync) {
       await this.powerSync.disconnectAndClear()
+      // Releases the storage too, so a reset can delete the OPFS file or the IndexedDB database.
+      await this.powerSync.close()
       this.powerSync = null
       this._db = null
     }

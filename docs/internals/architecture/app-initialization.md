@@ -151,7 +151,7 @@ never resolves.
 `DATABASE_INIT_FAILED` (`src/components/app-error-screen.tsx:48`); every other code gets
 contact-support alone. That affordance is attached to the code, which is why both storage failures
 above report `DATABASE_INIT_FAILED` rather than something more precise. Clearing calls `resetAppDir`
-(`src/lib/fs.ts:89`): disconnect PowerSync, wipe OPFS, rerun the pipeline.
+(`src/lib/fs.ts:89`): close PowerSync, wipe OPFS and the IndexedDB database, rerun the pipeline.
 
 `HandleErrorCode` (`src/types/handle-errors.ts:5-17`) is shared with non-init code paths, so not
 every value can reach the init error screen:

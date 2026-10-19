@@ -27,7 +27,7 @@ PowerSync has no supported hook for transforming downloaded data (see [powersync
 
 ## Data Flow
 
-Both worker paths run the same `ThunderboltSharedSyncImplementation` off the main thread and end at decrypted data in SQLite. They differ only in worker hosting (SharedWorker vs dedicated Worker) and in the VFS backing SQLite.
+Both worker paths run the same `ThunderboltSharedSyncImplementation` off the main thread and end at decrypted data in SQLite. They differ only in worker hosting (SharedWorker vs dedicated Worker).
 
 ```mermaid
 flowchart TD
@@ -164,11 +164,21 @@ import { SharedSyncImplementation } from 'powersync-web-internal/worker/sync/Sha
 
 ---
 
+## Local Storage
+
+Both configs store the database on OPFS (`OPFSCoopSyncVFS`, chosen by `shouldUseOpfs` in `src/db/powersync/database.ts`), which is faster than IndexedDB. Two cases keep `IDBBatchAtomicVFS`:
+
+- **No usable OPFS** (WebKitGTK on Tauri Linux, Firefox private browsing).
+- **A `default`-config device whose data already lives in IndexedDB.** Switching would start from an empty database and lose local-only rows (secrets, MCP servers) and queued uploads, so it moves at its next reset instead: after the wipe, `resetAppDir` leaves an empty OPFS database file, which the next start takes as the signal to use OPFS, and deletes the IndexedDB database. Another tab holding that database open delays the delete; a later OPFS start retries it. Browsers that can't list their IndexedDB databases (Firefox before 126) stay on IndexedDB.
+
+Sync telemetry reports the VFS as `ps_vfs`.
+
+---
+
 ## Safari / Tauri: Why It Stays Different
 
 Only the worker _hosting_ differs, not the transform. A SharedWorker is ruled out:
 
-- **OPFSCoopSyncVFS** (required on Safari/iOS for stack size reasons) does not support SharedWorker
 - **Tauri** (`tauri://`) blocks SharedWorker and `import.meta.url`-based worker loading for `node_modules` workers, so the DB worker loads PowerSync's prebuilt worker from an absolute path (`/@powersync/worker.js`, copied from `@powersync/web/dist/worker` by the `copy-powersync-assets` Vite plugin)
 - SharedWorker exceeds iOS WKWebView memory limits and causes black-screen crashes
 
