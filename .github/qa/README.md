@@ -73,7 +73,7 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    Dry run unless `--live`.
 6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 fake-AI tickets in fixable areas. The original spec
    must pass 3 times on the patch before `publish` opens a draft PR on `qa-fix/<fp>`; otherwise the ticket gets
-   `human required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
+   `Human Required`. `preview-deploy.yml` deploys no preview for `qa-fix/*` PRs.
 7. **report** (`report.ts summary`): the job summary.
 
 Output goes to `qa-out*/` (gitignored). `fixtures/` holds the files the charters upload.
@@ -278,8 +278,8 @@ secret would be used without warning. `notify` uses the existing repository secr
 
 Team Thunderbolt needs these labels, or the filer stops and lists the missing ones:
 
-- `qa-agent`, `Bug`, `security` (filing)
-- `human required` (tickets the fix agent must not touch)
+- `qa-agent`, `Bug`, `Security` (filing)
+- `Human Required` (tickets the fix agent must not touch)
 - `qa:valid`, `qa:not-a-bug`, `qa:duplicate`, `qa:env-artifact` (triage; the scorecard reads them to compute
   precision, and filing falls back to a dry run while precision stays under 70% over 8+ triaged tickets that are
   not duplicates)

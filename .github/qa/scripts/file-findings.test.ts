@@ -53,7 +53,7 @@ const fakeLinear = (handlers: Handlers = {}) => {
     const data = (() => {
       if (op === 'Teams') return { teams: { nodes: [{ id: 't1', name: 'Thunderbolt' }] } }
       if (op === 'QaSetup') {
-        const names = handlers.labels ?? ['qa-agent', 'Bug', 'security']
+        const names = handlers.labels ?? ['qa-agent', 'Bug', 'Security']
         return {
           workflowStates: { nodes: handlers.triage === false ? [] : [{ id: 'triage-id' }] },
           issueLabels: { nodes: names.map((name) => ({ id: `l-${name}`, name, team: null })) },
@@ -234,7 +234,7 @@ describe('cap and roll-up', () => {
     expect(filed.map((f) => f.action)).toEqual([...Array(8).fill('created'), 'created', 'rolled-up'])
     const [security, rollup] = created(api).slice(-2)
     expect(security.title).toContain('Leaky thing')
-    expect(security.labelIds).toContain('l-security')
+    expect(security.labelIds).toContain('l-Security')
     expect(security.description).not.toContain(runUrl)
     expect(rollup.title).toContain('1 more finding')
     expect(rollup.description).not.toContain('Leaky thing')
@@ -246,10 +246,10 @@ describe('cap and roll-up', () => {
     const filed = await run(api.fetchFn)
     expect(filed.map((f) => f.action)).toEqual(['created', 'created', 'created', 'rolled-up', 'rolled-up'])
     const tickets = created(api)
-    expect(tickets.slice(0, 3).every((t) => t.labelIds.includes('l-security'))).toBe(true)
+    expect(tickets.slice(0, 3).every((t) => t.labelIds.includes('l-Security'))).toBe(true)
     const rollup = tickets[3]
     expect(rollup.title).toBe('QA agent: 2 more security findings over the 3-ticket cap')
-    expect(rollup.labelIds).toEqual(['l-qa-agent', 'l-Bug', 'l-security'])
+    expect(rollup.labelIds).toEqual(['l-qa-agent', 'l-Bug', 'l-Security'])
     expect(rollup.description).not.toContain(runUrl)
     expect(rollup.description).not.toContain('Bug ')
     expect(rollup.description).toContain(`[qa:${filed[3].fp}] High`)
@@ -329,7 +329,7 @@ describe('security findings', () => {
     const api = fakeLinear()
     await run(api.fetchFn)
     const [input] = created(api)
-    expect(input.labelIds).toContain('l-security')
+    expect(input.labelIds).toContain('l-Security')
     expect(input.description).not.toContain(runUrl)
     expect(api.ops.some((o) => o.op === 'FileUpload')).toBe(false)
   })
@@ -352,7 +352,14 @@ describe('setup errors', () => {
   test('missing labels fail with the list', async () => {
     await writeVerified([{}])
     await expect(run(fakeLinear({ labels: ['Bug'] }).fetchFn)).rejects.toThrow(
-      'Missing Linear labels: qa-agent, security',
+      'Missing Linear labels: qa-agent, Security',
+    )
+  })
+
+  test('a lowercase security label does not count as Security', async () => {
+    await writeVerified([{}])
+    await expect(run(fakeLinear({ labels: ['qa-agent', 'Bug', 'security'] }).fetchFn)).rejects.toThrow(
+      'Missing Linear labels: Security',
     )
   })
 

@@ -568,7 +568,7 @@ describe('publish', () => {
     expect(result).toEqual({ outcome: 'human-required', reasons: ['the fix agent wrote a diagnosis'] })
     expect(runs).toEqual([])
     expect(calls).toEqual([])
-    expect(lines.join('\n')).toContain('would comment on THB-1 and label it "human required"')
+    expect(lines.join('\n')).toContain('would comment on THB-1 and label it "Human Required"')
   })
 
   test('a diagnosis means no PR: the ticket gets it as a comment and the human required label', async () => {
@@ -591,6 +591,7 @@ describe('publish', () => {
     expect(runs).toEqual([])
     expect(calls.map((c) => c.op)).toEqual(['Comment', 'Label', 'AddLabel'])
     expect(calls[0].variables.body).toContain('Root cause in src/chat.ts:3')
+    expect(calls.find((c) => c.op === 'Label')?.variables.name).toBe('Human Required')
   })
 
   test('never posts a diagnosis that matches a secret pattern', async () => {

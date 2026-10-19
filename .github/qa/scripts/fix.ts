@@ -14,6 +14,7 @@ import {
   type Filed,
   type LinearAuth,
   priority,
+  qaLabels,
   sanitize,
   secretPattern,
   ticketView,
@@ -24,7 +25,6 @@ import type { Verified } from './verify'
 const fixableAreas = new Set<Area>(['chat', 'settings', 'skills', 'projects', 'widgets', 'layout', 'i18n'])
 const ticketActions = new Set<Action | undefined>(['created', 'regression', 'commented'])
 const maxFixes = 3
-const humanRequired = 'human required'
 
 /** A fix may change only app code, as `.github/qa/fix.md` says; `publish` adds the regression spec itself. */
 const allowedPaths = /^(src|shared|backend\/src)\//
@@ -70,17 +70,17 @@ export const runCommand: Run = async (cmd, { env, stdin, cwd } = {}) => {
   return stdout
 }
 
-/** Label tickets the filer created `human required`, looking the label up once. */
+/** Label tickets the filer created `Human Required`, looking the label up once. */
 const markHumanRequired = async ({ fetchFn, key }: LinearAuth, issueIds: string[]) => {
   if (issueIds.length === 0) return
   const { issueLabels } = await linear<{ issueLabels: { nodes: { id: string; team: { name: string } | null }[] } }>(
     fetchFn,
     key,
     'query Label($name: String!) { issueLabels(first: 50, filter: { name: { eq: $name } }) { nodes { id team { name } } } }',
-    { name: humanRequired },
+    { name: qaLabels.humanRequired },
   )
   const label = issueLabels.nodes.find((l) => !l.team || l.team.name === 'Thunderbolt')
-  if (!label) throw new Error(`Missing Linear label: ${humanRequired}`)
+  if (!label) throw new Error(`Missing Linear label: ${qaLabels.humanRequired}`)
   for (const id of issueIds) {
     const { issueAddLabel } = await linear<{ issueAddLabel: { success: boolean } }>(
       fetchFn,
@@ -107,7 +107,7 @@ type RouteOptions = {
  * on disk, its area is fixable, and no `qa-fix/<fp>` branch exists yet (an earlier draft PR is still open).
  * At most three, highest severity first. Security findings are never routed. Every other area (sync, auth,
  * models, data, onboarding, …) needs a person, and so does every real-AI finding, because the fix job checks a fix
- * on the fake AI: with `live` those tickets get the `human required` label.
+ * on the fake AI: with `live` those tickets get the `Human Required` label.
  * With `live` only tickets that exist count, so a filing forced into a dry run starts no fix agent; a dry run
  * plans what a live filing would have created.
  */
@@ -146,7 +146,7 @@ export const route = async ({
   }
   await writeFile(join(outDir, 'fix-plan.json'), JSON.stringify(plan, null, 2))
   log(`fix: ${plan.fixes.map((t) => t.fp).join(', ') || 'none'}`)
-  log(`${humanRequired}: ${plan.humanRequired.map((t) => t.fp).join(', ') || 'none'}`)
+  log(`${qaLabels.humanRequired}: ${plan.humanRequired.map((t) => t.fp).join(', ') || 'none'}`)
   if (!live || !key) return plan
   await markHumanRequired(
     { fetchFn, key },
@@ -262,7 +262,7 @@ type PublishResult =
  * - `fix/<fp>.spec.ts`: the repro spec as the agent left it, compared with the original;
  * - `fix/<fp>.diagnosis.md`: written when the agent gave up; any patch is then ignored.
  * A diagnosis or a rejected patch (empty, a denied path, an edited spec) means no PR: the ticket gets a comment
- * and the `human required` label. Otherwise branch `qa-fix/<fp>` gets one commit (the patch plus the repro spec
+ * and the `Human Required` label. Otherwise branch `qa-fix/<fp>` gets one commit (the patch plus the repro spec
  * as a regression test) under the git identity the workflow configured, is pushed with `token` (a GitHub App
  * token; check out with `persist-credentials: false` so no second auth header competes), and becomes a draft PR
  * linking the ticket, which gets the PR link as a comment.
@@ -290,7 +290,8 @@ export const publish = async ({
   const auth = { fetchFn, key: key ?? '' }
 
   const handOff = async (reasons: string[], body: string): Promise<PublishResult> => {
-    if (!live) log(`[dry run] would comment on ${task.identifier ?? fp} and label it "${humanRequired}":\n${body}`)
+    if (!live)
+      log(`[dry run] would comment on ${task.identifier ?? fp} and label it "${qaLabels.humanRequired}":\n${body}`)
     else {
       await addComment(auth, issueId, body)
       await markHumanRequired(auth, [issueId])

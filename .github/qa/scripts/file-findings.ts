@@ -37,7 +37,14 @@ export const priority = { Urgent: 1, High: 2, Medium: 3, Low: 4 } satisfies Reco
 /** New tickets per run, with a separate cap for security findings so neither kind crowds out the other. */
 const ticketCap = { bug: 8, security: 3 }
 const regressionWindowMs = 60 * 24 * 60 * 60 * 1000
-const requiredLabels = ['qa-agent', 'Bug', 'security']
+/** The Linear label names, case-sensitive: Linear matches them exactly (team Thunderbolt). */
+export const qaLabels = {
+  agent: 'qa-agent',
+  bug: 'Bug',
+  security: 'Security',
+  humanRequired: 'Human Required',
+} as const
+const requiredLabels = [qaLabels.agent, qaLabels.bug, qaLabels.security]
 const triageLabels = ['qa:valid', 'qa:not-a-bug', 'qa:duplicate', 'qa:env-artifact'] as const
 const brakeMinLabelled = 8
 const brakeMinPrecision = 0.7
@@ -375,7 +382,7 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
     const description = [!security && runUrl && `**Run:** ${runUrl}`, 'Not filed individually this run:', ...lines]
       .filter(Boolean)
       .join('\n\n')
-    const labels = ['qa-agent', 'Bug', ...(security ? ['security'] : [])]
+    const labels = [qaLabels.agent, qaLabels.bug, ...(security ? [qaLabels.security] : [])]
     const issue = live && ctx ? await createIssue(ctx, title, description, rest[0].sev, labels) : undefined
     if (!issue) log(`[dry run] would create the roll-up "${title}"`)
     for (const entry of rest) {
@@ -416,7 +423,7 @@ export const fileFindings = async (opts: FileOptions): Promise<Filed[]> => {
       }
       opened[kind]++
       const regressionOf = decision.kind === 'regression' ? decision.issue : undefined
-      const names = ['qa-agent', 'Bug', ...(f.area === 'security' ? ['security'] : [])]
+      const names = [qaLabels.agent, qaLabels.bug, ...(f.area === 'security' ? [qaLabels.security] : [])]
       const title = `${ticketView(f).title} [qa:${fp}]`
       const video = f.area === 'security' ? undefined : v.artifacts.video
       const preview = { title, labels: names, body: buildBody(entry, spec, { runUrl, sha, regressionOf }) }
