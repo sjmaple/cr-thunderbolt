@@ -633,7 +633,7 @@ describe('probeGaps', () => {
       ['mcp__playwright_b__browser_navigate', navigated('/out/mcp-b/console-b.log#L1-L3')],
       ['mcp__playwright_b__browser_navigate_back', navigated('/out/mcp-b/gone.log#L1')],
     ] as const
-    expect(await probeGaps(callsOf(steps), readLog)).toEqual({ loads: 6, missing: 4 })
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 6, missing: 4 })
   })
 
   it('ignores results of other tools, even when they link a log with the ready line', async () => {
@@ -642,7 +642,18 @@ describe('probeGaps', () => {
       ['mcp__playwright__browser_navigate', navigated('/out/mcp/console-a.log#L1')],
       ['Write', 'ok'],
     ] as const
-    expect(await probeGaps(callsOf(steps), readLog)).toEqual({ loads: 1, missing: 0 })
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 1, missing: 0 })
+  })
+
+  it('reads a link written under another root or relative to another cwd from the session dir', async () => {
+    const steps = [
+      [
+        'mcp__playwright__browser_navigate',
+        navigated('/home/runner/work/tb/qa-out/c2-chat-phone/mcp/console-a.log#L1'),
+      ],
+      ['mcp__playwright_b__browser_navigate', navigated('qa-out/c2-chat-phone/mcp-b/console-b.log#L1-L3')],
+    ] as const
+    expect(await probeGaps(callsOf(steps), '/out', readLog)).toEqual({ loads: 2, missing: 0 })
   })
 })
 

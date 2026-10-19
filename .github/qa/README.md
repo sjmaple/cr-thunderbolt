@@ -69,11 +69,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    `--console-level error`. A problem line is a `layout` finding. The MCP does not put console text in a tool
    result: a navigate result holds a count of console errors and a link to the lines the load wrote, in a log file
    under `--output-dir` (absolute, because of `--file-paths absolute`). The explorer reads the lines with
-   `browser_console_messages`. `report.ts` follows each navigate link and lists a session whose page loads lack the
-   ready line under "Layout probe", because a clean layout there proves nothing. `noise.txt` turns a `[qa-layout]`
-   line filed as a `console-error` into an observation. The explorer also takes a screenshot of every new screen
-   and sees it (`--image-responses allow`). A defect it sees there and the probe did not report is a `visual`
-   finding, which names its screenshot (`mcp/<file>`) instead of a repro spec. `--output-dir` is
+   `browser_console_messages`. `report.ts` follows each navigate link inside the session's own directory (the link
+   is cut at its `mcp/` or `mcp-b/` part, so another runner path still resolves) and lists a session whose page
+   loads lack the ready line under "Layout probe", because a clean layout there proves nothing. `noise.txt` turns
+   a `[qa-layout]` line filed as a `console-error` into an observation. The explorer also takes a screenshot of
+   every new screen and sees it (`--image-responses allow`). A defect it sees there and the probe did not report is
+   a `visual` finding, which names its screenshot (`mcp/<file>`) instead of a repro spec. `--output-dir` is
    `<session>/mcp` (`mcp-b` for c7's second browser), and the job uploads its screenshots and console logs with
    the session.
 3. **replay** (`verify.ts replay`): schema, oracle (`noise.txt`) and lint gates, then each spec 3 times. 3 of 3
@@ -89,8 +90,8 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    Dry run unless `--live`. The fingerprint ignores the platform, so findings that share one become one ticket
    whose `**Platforms:**` line lists every platform that found the bug, and an open ticket gets one comment with
    that line. A `visual` finding's fingerprint is its area, function and element (`<role> "<name>"`), never its
-   wording; one without an element is refused. Its ticket carries `Human Required` and embeds the screenshot,
-   uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
+   wording; one without an element is refused. Its ticket names the element, carries `Human Required` and embeds
+   the screenshot, uploaded with the content type its bytes declare. A `security` finding uploads no screenshot and no video.
 6. **fix** (off by default, `fix.ts` and `fix.md`): at most 3 fake-AI tickets in fixable areas, one per
    fingerprint, and never a `visual` one, which has no spec to pass. The original spec
    must pass 3 times on the patch before `publish` opens a draft PR on `qa-fix/<fp>`; otherwise the ticket gets

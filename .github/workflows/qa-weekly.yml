@@ -391,7 +391,10 @@ jobs:
         run: |
           dir=$QA_OUT/$QA_CHARTER
           mkdir -p "$dir"
-          # The explorer can write into its out dir: only what this step writes may reach the report.
+          # The explorer's Write tool can reach its out dir, so these files are removed and written here only. Two
+          # things it can also write still reach later steps: the judge reads screenshots under mcp/, which replay
+          # accepts only when the browser tool took them and no file tool wrote them; the report reads the MCP
+          # console logs, which nothing guards, so a forged log at worst turns a missing probe line into "measured".
           rm -f "$dir/execution.json" "$dir/timed-out" "$dir/transcript.json"
           # Only the result message's counters, and the tool calls with capped results for the coverage check: the
           # full execution file also holds the prompt and everything the model wrote.

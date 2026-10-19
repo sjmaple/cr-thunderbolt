@@ -124,7 +124,9 @@ status, or the text on screen):
   result shows only a count of console errors, never the lines. After every navigation, wait about 1 s and call
   `browser_console_messages`, and call it again whenever the error count grows. A `[qa-layout]` line other than
   `[qa-layout] ready` is a `layout` finding with that line as its evidence, never a `console-error` one, even though
-  it is a console error. Do not measure the layout yourself.
+  it is a console error. Do not measure the layout yourself. The finding's `area` is the area of the screen where
+  the problem shows (onboarding, chat, settings, ...), never `layout`: a covered Continue button on onboarding is an
+  `onboarding` finding.
 - `visual`: a screenshot shows a defect a user would notice and the probe did not report: a control covered by
   something, text cut off, elements overlapping, a broken layout. The evidence is one sentence saying what the
   screenshot shows. A problem the probe reported is a `layout` finding, never a `visual` one.

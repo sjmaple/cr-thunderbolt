@@ -229,27 +229,41 @@ describe('route', () => {
     expect(plan.humanRequired.map((t) => [t.fp, t.area])).toEqual([['fp-real', 'chat']])
   })
 
-  test('routes one fix when the same bug was filed on desktop and phone', async () => {
+  test('routes one fix and labels one ticket once when the same bugs were filed on desktop and phone', async () => {
     const ticket = { fp: 'fp-same', severity: 'High', action: 'created', issueId: 'i1', identifier: 'THB-1' } as const
+    const sync = { fp: 'fp-sync', severity: 'High', action: 'created', issueId: 'i2', identifier: 'THB-2' } as const
     const filed: Filed[] = [
       { ...ticket, charterDir: 'c2-chat-power-user-desktop', id: '1' },
       { ...ticket, charterDir: 'c2-chat-power-user-phone', id: '1' },
+      { ...sync, charterDir: 'c2-chat-power-user-desktop', id: '2' },
+      { ...sync, charterDir: 'c2-chat-power-user-phone', id: '2' },
     ]
-    const confirmed: VerifiedFinding[] = filed.map(({ charterDir }) => ({
+    const confirmed: VerifiedFinding[] = filed.map(({ charterDir, id }) => ({
       charterDir,
-      id: '1',
-      finding: finding('chat'),
+      id,
+      finding: finding(id === '1' ? 'chat' : 'sync', { repro_spec: `repro/${id}.spec.ts` }),
       replay: { failed: 3, runs: 3 },
       artifacts: {},
     }))
     const verified: Verified = { confirmed, flaky: [], observations: [], dropped: [] }
     await put(join(outDir, 'filed.json'), JSON.stringify(filed))
     await put(join(outDir, 'verified.json'), JSON.stringify(verified))
-    for (const { charterDir } of filed) await put(join(outDir, charterDir, 'repro', '1.spec.ts'), spec)
+    for (const { charterDir, id } of filed) await put(join(outDir, charterDir, 'repro', `${id}.spec.ts`), spec)
+    const calls: Call[] = []
 
-    const plan = await route({ outDir, live: false, run: fakeRun([]), log: () => {} })
+    const plan = await route({
+      outDir,
+      live: true,
+      key: 'k',
+      run: fakeRun([]),
+      fetchFn: fakeLinear(calls),
+      log: () => {},
+    })
 
     expect(plan.fixes.map((t) => [t.fp, t.charterDir])).toEqual([['fp-same', 'c2-chat-power-user-desktop']])
+    expect(plan.humanRequired.map((t) => t.fp)).toEqual(['fp-sync'])
+    expect(calls.map((c) => c.op)).toEqual(['Label', 'AddLabel'])
+    expect(calls[1].variables.id).toBe('i2')
   })
 
   test('a visual ticket becomes no fix and no Human Required entry: it is filed with that label', async () => {

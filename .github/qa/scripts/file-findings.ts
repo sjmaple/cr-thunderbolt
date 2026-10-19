@@ -277,7 +277,7 @@ type Overflow = { bug: Entry[]; security: Entry[] }
 
 /** Text an attacker-influenced page could have shaped; scanned for secrets before anything is sent. */
 const modelText = (f: Finding, spec: string) =>
-  [f.title, f.charter, ...f.steps, f.expected, f.actual, f.oracle.evidence, spec].join('\n')
+  [f.title, f.charter, ...f.steps, f.expected, f.actual, f.oracle.evidence, f.element ?? '', spec].join('\n')
 
 /** A finding's model-written fields as its ticket shows them: sanitized, capped, and one line for short fields. */
 export const ticketView = (f: Finding, runUrl?: string) => {
@@ -308,6 +308,7 @@ const buildBody = (
     extra.regressionOf &&
       `Regression: previously fixed in ${extra.regressionOf.identifier} (${extra.regressionOf.url})`,
     `**Area:** ${f.area} · **Severity:** ${sev} · ${platformsLine(platforms)} · **Charter:** ${sanitize(v.charterDir, 60, runUrl)}`,
+    f.element && `**Element:** ${sanitize(f.element, 80, runUrl).replace(/\s+/g, ' ')}`,
     extra.sha && `**Commit:** ${extra.sha}`,
     runUrl && `**Run:** ${runUrl}`,
     '## Steps',

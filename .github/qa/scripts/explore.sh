@@ -45,19 +45,16 @@ prompt() {
   cat .github/qa/prompt.md
   # The model's "random" addresses repeat across sessions, so each run gets its own.
   # shellcheck disable=SC2016 # the backticks are Markdown
-  printf '\n## Your run\n\n- Charter id: `%s`\n- Output directory: `%s/%s`\n- Fresh addresses: `qa-%s-%s-<n>@thunderbolt.test`, n = 1, 2, 3…\n\n' \
-    "$1" "$2" "$1" "$1" "$(date +%s)"
+  printf '\n## Your run\n\n- Charter id: `%s`\n- Platform: `%s`, a %s screen.\n- Output directory: `%s/%s`\n- Fresh addresses: `qa-%s-%s-<n>@thunderbolt.test`, n = 1, 2, 3…\n\n' \
+    "$1" "$id" "$viewport" "$2" "$1" "$1" "$(date +%s)"
   if [[ $1 == free-* ]]; then
     local case_id
     case_id=$(journey "${base#free-}")
-    # shellcheck disable=SC2016 # the backticks are Markdown
-    printf '## Your case (free session)\n\nPlatform: `%s`, a %s screen.\n\n```json\n' "$id" "$viewport"
+    printf '## Your case (free session)\n\n```json\n'
     jq --arg id "$case_id" '.[] | select(.id == $id) | del(.pt)' .github/qa/journeys.json
     printf '```\n'
     return
   fi
-  # shellcheck disable=SC2016 # the backticks are Markdown
-  printf 'Platform: `%s`, a %s screen.\n\n' "$id" "$viewport"
   cat ".github/qa/charters/$base.md"
   printf '\n## Functions to test\n\nEach id, then the outcome that shows the function works.\n\n'
   # shellcheck disable=SC2016 # jq string interpolation

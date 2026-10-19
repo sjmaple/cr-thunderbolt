@@ -137,7 +137,8 @@ export const route = async ({
     // The filer gives a visual ticket the Human Required label itself.
     if (finding.area === 'security' || finding.oracle.type === 'visual') continue
     if (!fixableAreas.has(finding.area) || realAiCharters.has(charterDir)) {
-      plan.humanRequired.push({ ...ticket, area: finding.area })
+      // filed.json has one line per platform, so a cross-platform ticket shows up more than once.
+      if (!plan.humanRequired.some((t) => t.fp === fp)) plan.humanRequired.push({ ...ticket, area: finding.area })
       continue
     }
     // Only a visual finding may lack a spec; this narrows the type.

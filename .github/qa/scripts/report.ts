@@ -182,13 +182,21 @@ const isAction = (step: Step) => {
 /** The lines the MCP says a result added to its console log: `- New console entries: <path>#L<from>[-L<to>]`. */
 const consoleLink = /^- New console entries: (.+)#L(\d+)(?:-L(\d+))?$/m
 
-/** Reads an MCP console log; a link is absolute under `--file-paths absolute`, else relative to the MCP's cwd. */
 const readConsoleLog = (path: string) => readFile(resolve(path), 'utf8').catch(() => undefined)
 
+/**
+ * Where a console link points inside this session's directory. The explore runner wrote the link, absolute under
+ * `--file-paths absolute` or relative to its cwd, so everything before the `mcp/` or `mcp-b/` part is replaced.
+ */
+const sessionLogPath = (link: string, sessionDir: string) => {
+  const [, rest] = /^(?:.*\/)?(mcp(?:-b)?\/.+)$/.exec(link) ?? []
+  return rest ? join(sessionDir, rest) : link
+}
+
 /** The load's result links console lines that hold the probe's ready line. */
-const probeRan = async (result: string, readLog: (path: string) => Promise<string | undefined>) => {
-  const [, path, from, to = from] = consoleLink.exec(result) ?? []
-  const log = path ? await readLog(path) : undefined
+const probeRan = async (result: string, sessionDir: string, readLog: (path: string) => Promise<string | undefined>) => {
+  const [, link, from, to = from] = consoleLink.exec(result) ?? []
+  const log = link ? await readLog(sessionLogPath(link, sessionDir)) : undefined
   return (
     log
       ?.split('\n')
@@ -199,17 +207,18 @@ const probeRan = async (result: string, readLog: (path: string) => Promise<strin
 
 /**
  * Page loads in a session and how many of them did not show `[qa-layout] ready`. The MCP puts no console text in a
- * navigate result, only a count and a link to the log lines the load wrote, so each link is followed (`readLog`).
- * A load with no link, or whose linked lines lack the ready line, counts as missing.
+ * navigate result, only a count and a link to the log lines the load wrote, so each link is followed (`readLog`)
+ * under `sessionDir`. A load with no link, or whose linked lines lack the ready line, counts as missing.
  */
 export const probeGaps = async (
   transcript: TranscriptMessage[],
+  sessionDir: string,
   readLog = readConsoleLog,
 ): Promise<{ loads: number; missing: number }> => {
   const loads = toSteps(transcript).flatMap((step) =>
     step.kind === 'result' && ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '') ? [step.text] : [],
   )
-  const ran = await Promise.all(loads.map((result) => probeRan(result, readLog)))
+  const ran = await Promise.all(loads.map((result) => probeRan(result, sessionDir, readLog)))
   return { loads: loads.length, missing: ran.filter((ok) => !ok).length }
 }
 const isNavigation = (step: Step) =>
@@ -656,7 +665,7 @@ export const runSummary = async (
     const transcript = isFix(s)
       ? undefined
       : await readJson<TranscriptMessage[]>(join(dir, 'transcript.json')).catch(() => undefined)
-    const gaps = transcript && (await probeGaps(transcript))
+    const gaps = transcript && (await probeGaps(transcript, dir))
     if (gaps && gaps.missing > 0) probe.set(s.charter, gaps)
     if (list) coverage.set(s.charter, checkCoverage(list, attempts, transcript))
   }

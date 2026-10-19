@@ -420,6 +420,7 @@ describe('visual findings', () => {
     expect(created(api)[0].labelIds).toContain('l-Human Required')
     expect(uploads(api)[0].contentType).toBe('image/png')
     expect(created(api)[0].description).toContain('![Screenshot](https://uploads.linear.app/a/page-1.png)')
+    expect(created(api)[0].description).toContain('**Element:** button "Continue"')
   })
 
   test("the screenshot's content type comes from its bytes, not its name", async () => {

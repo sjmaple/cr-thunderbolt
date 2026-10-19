@@ -122,7 +122,8 @@ const fileToolWrote = (transcript: TranscriptMessage[], file: string) =>
     )
 
 // The Claude API's image limits (https://platform.claude.com/docs/en/build-with-claude/vision): the size once
-// base64-encoded and the pixels per side. Over either, the judge call fails with a 400.
+// base64-encoded and the pixels per side. Over either, the judge call fails with a 400. The 5 MB limit people
+// remember is Bedrock's and Google Cloud's; the judge calls the Claude API directly.
 const imageLimit = { base64Bytes: 10_000_000, side: 8_000 }
 
 type ImageInfo = { mediaType: 'image/png' | 'image/jpeg'; width: number; height: number }
