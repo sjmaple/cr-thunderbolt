@@ -212,6 +212,14 @@ An agent is the assistant behind a conversation. Thunderbolt ships a built-in on
 | `DISABLE_BUILT_IN_AGENT` | `false` | `true` removes the built-in Thunderbolt agent entirely, for deployments that offer only their own. |
 | `MINIMAL_MODE`           | `false` | `true` shows a chat-only app, for public deployments.                                              |
 
+| Variable              | Default | What it does                                                                                                              |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `BRAND_LOGO_URL`      | empty   | In minimal mode, a logo shown in the header instead of the agent's icon and name. An `https:` URL or a `data:image/` URL. |
+| `BRAND_LOGO_DARK_URL` | empty   | The logo for dark theme. Falls back to `BRAND_LOGO_URL`. Same URL rules.                                                  |
+| `BRAND_LOGO_ALT`      | empty   | The logo's accessible name. Falls back to the agent's name.                                                               |
+
+A `data:image/` URL works in the web app and the desktop app, so it is the recommended form. An `https:` URL works in the web app only: the desktop app's content security policy allows images from `'self'`, `asset:`, `data:` and `https://api.thunderbolt.io`, so serving the logo to desktop users would need its origin added to `img-src` in `src-tauri/tauri.conf.json`.
+
 `MINIMAL_MODE=true` hides the Settings section, the starter skill chips, Projects, the account control and the add menu's Connections action, and turns off slash-command skills, so `/` is ordinary text in the composer.
 
 ### Hosted agent

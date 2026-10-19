@@ -217,6 +217,84 @@ describe('AgentSelector', () => {
     expect(screen.queryByText('Add Agent')).not.toBeInTheDocument()
   })
 
+  describe('operator logo', () => {
+    const logoConfig = {
+      minimalMode: true,
+      brandLogoUrl: 'data:image/svg+xml,light',
+      brandLogoDarkUrl: 'data:image/svg+xml,dark',
+      brandLogoAlt: 'Example',
+    }
+    const originalMatchMedia = window.matchMedia
+    // Without a ThemeProvider the theme reads 'system', which resolves through this query.
+    const renderSelector = (theme: 'light' | 'dark' = 'light') => {
+      window.matchMedia = (() => ({
+        matches: theme === 'dark',
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia
+      return render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent]} onSelect={() => {}} />)
+    }
+
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia
+    })
+
+    it('replaces the icon and name with the logo, per theme', () => {
+      useConfigStore.setState({ config: logoConfig, configLoaded: true })
+      renderSelector('light')
+
+      const logo = screen.getByRole('img', { name: 'Example' })
+      expect(logo).toHaveAttribute('src', 'data:image/svg+xml,light')
+      expect(logo).toHaveAttribute('draggable', 'false')
+      expect(logo).toHaveClass('min-w-0', 'max-w-full', 'object-contain', 'object-left')
+      expect(screen.getByTestId('agent-selector-trigger')).not.toHaveTextContent('Thunderbolt')
+
+      cleanup()
+      renderSelector('dark')
+      expect(screen.getByRole('img', { name: 'Example' })).toHaveAttribute('src', 'data:image/svg+xml,dark')
+    })
+
+    it('keeps the logo and renders no circle when the header is collapsed', () => {
+      useConfigStore.setState({ config: logoConfig, configLoaded: true })
+      render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent]} onSelect={() => {}} collapsed />)
+
+      expect(screen.getByTestId('agent-selector-pill')).not.toHaveClass('opacity-0')
+      expect(screen.getByRole('img', { name: 'Example' })).toBeInTheDocument()
+      expect(screen.queryByTestId('agent-selector-collapsed-circle')).not.toBeInTheDocument()
+    })
+
+    it('still collapses to the circle when no logo is set', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      render(<AgentSelector selectedAgent={builtInAgent} agents={[builtInAgent]} onSelect={() => {}} collapsed />)
+
+      expect(screen.getByTestId('agent-selector-pill')).toHaveClass('opacity-0')
+      expect(screen.getByTestId('agent-selector-collapsed-circle')).toHaveClass('opacity-100')
+    })
+
+    it('falls back to the agent name for alt', () => {
+      useConfigStore.setState({ config: { ...logoConfig, brandLogoAlt: '' }, configLoaded: true })
+      renderSelector()
+
+      expect(screen.getByRole('img', { name: 'Thunderbolt' })).toBeInTheDocument()
+    })
+
+    it('shows the icon and name when no logo is set', () => {
+      useConfigStore.setState({ config: { minimalMode: true }, configLoaded: true })
+      renderSelector()
+
+      expect(document.querySelector('img[src^="data:image/"]')).toBeNull()
+      expect(screen.getByTestId('agent-selector-trigger')).toHaveTextContent('Thunderbolt')
+    })
+
+    it('is ignored outside minimal mode', () => {
+      useConfigStore.setState({ config: { ...logoConfig, minimalMode: false }, configLoaded: true })
+      renderSelector()
+
+      expect(screen.queryByRole('img', { name: 'Example' })).not.toBeInTheDocument()
+      expect(screen.getByTestId('agent-selector-trigger')).toHaveTextContent('Thunderbolt')
+    })
+  })
+
   describe('when the only available agent is not the selected one', () => {
     // A chat created before hosted-agent discovery finished keeps the built-in
     // fallback, so the hosted agent is the one choice and must stay reachable.

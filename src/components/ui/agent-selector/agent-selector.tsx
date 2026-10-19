@@ -3,10 +3,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { selectMinimalMode, useConfigStore } from '@/api/config-store'
+import { selectBrandLogo, selectMinimalMode, useConfigStore } from '@/api/config-store'
 import { SearchableMenu, searchableMenuRowClass, type SearchableMenuItem } from '@/components/ui/searchable-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHaptics } from '@/hooks/use-haptics'
+import { useResolvedTheme } from '@/lib/theme-provider'
 import { cn } from '@/lib/utils'
 import type { Agent } from '@/types/acp'
 import { iconForAgent } from '@/components/agent-icon'
@@ -107,6 +108,10 @@ export const AgentSelector = ({
   const soleAgentIsOther = agents.length === 1 && agents[0].id !== selectedAgent.id
   const isLabel = !soleAgentIsOther && (minimalMode || (agents.length <= 1 && !onAddAgent))
   const dimmed = disabled && !isLabel
+  // Derived outside the store selector: it returns a fresh object, which zustand would see as a changed snapshot every render.
+  const brandLogo = selectBrandLogo(useConfigStore((state) => state.config))
+  const resolvedTheme = useResolvedTheme()
+  const showBrandLogo = isLabel && minimalMode && brandLogo !== null
 
   const handleAgentChange = (_id: string, item: SearchableMenuItem<AgentItemData>) => {
     const agent = item.data?.agent
@@ -140,7 +145,7 @@ export const AgentSelector = ({
           className={cn(
             'relative z-10 flex h-full items-center rounded-full px-4 transition-[opacity,background-color,color] duration-150 md:px-3',
             mobileHeaderControlFillClass,
-            collapsed ? 'opacity-0' : 'opacity-100',
+            collapsed && !showBrandLogo ? 'opacity-0' : 'opacity-100',
             !dimmed && isOpen
               ? 'bg-secondary'
               : !collapsed &&
@@ -148,15 +153,26 @@ export const AgentSelector = ({
                   'hover:bg-accent max-md:group-active:bg-muted-foreground/20 dark:hover:bg-secondary/50',
           )}
         >
-          <Icon
-            className={cn(
-              'max-w-none shrink-0 text-muted-foreground',
-              triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5',
-            )}
-          />
-          <span className="min-w-0 truncate pl-2 font-medium text-muted-foreground">
-            {selected?.label ?? selectedAgent.name}
-          </span>
+          {showBrandLogo ? (
+            <img
+              src={resolvedTheme === 'dark' ? brandLogo.dark : brandLogo.light}
+              alt={brandLogo.alt || selectedAgent.name}
+              draggable={false}
+              className="h-[var(--icon-size-default)] w-auto min-w-0 max-w-full object-contain object-left"
+            />
+          ) : (
+            <>
+              <Icon
+                className={cn(
+                  'max-w-none shrink-0 text-muted-foreground',
+                  triggerAgent.type === 'built-in' ? 'size-4' : 'size-3.5',
+                )}
+              />
+              <span className="min-w-0 truncate pl-2 font-medium text-muted-foreground">
+                {selected?.label ?? selectedAgent.name}
+              </span>
+            </>
+          )}
           {/* Hidden on mobile: the menu opens as an animated card there, so the
               chevron affordance is redundant. */}
           {!isLabel && (
@@ -171,18 +187,22 @@ export const AgentSelector = ({
 
         {/* Independent logo-only circle beneath the pill. Crossfading these
             layers means the moving element never changes width; only opacity
-            and the header wrapper's translate animate. */}
-        <div
-          aria-hidden="true"
-          data-testid="agent-selector-collapsed-circle"
-          className={cn(
-            'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full transition-opacity duration-150 max-md:group-active:bg-muted-foreground/20 md:hidden',
-            mobileHeaderControlFillClass,
-            collapsed ? 'opacity-100' : 'opacity-0',
-          )}
-        >
-          <Icon className="max-w-none size-[var(--icon-size-default)] text-muted-foreground" />
-        </div>
+            and the header wrapper's translate animate. The operator logo is a
+            wordmark that does not fit a circle, so it stays in the pill and
+            no circle is rendered. */}
+        {!showBrandLogo && (
+          <div
+            aria-hidden="true"
+            data-testid="agent-selector-collapsed-circle"
+            className={cn(
+              'pointer-events-none absolute right-0 top-0 z-0 flex size-[var(--touch-height-lg)] items-center justify-center rounded-full transition-opacity duration-150 max-md:group-active:bg-muted-foreground/20 md:hidden',
+              mobileHeaderControlFillClass,
+              collapsed ? 'opacity-100' : 'opacity-0',
+            )}
+          >
+            <Icon className="max-w-none size-[var(--icon-size-default)] text-muted-foreground" />
+          </div>
+        )}
       </div>
     )
 
