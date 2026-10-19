@@ -8,10 +8,10 @@
     <title>Offscreen</title>
   </head>
   <body>
-    <!-- The toolbar cannot wrap or scroll, so Save sticks out past the right edge. -->
+    <!-- The toolbar is on screen but cannot wrap or scroll, so Save sits wholly past the right edge. -->
     <div style="position: fixed; bottom: 0; left: 0; right: 0; display: flex; overflow: hidden">
-      <button style="flex: none; width: 1000px">Discard</button>
-      <button style="flex: none; width: 500px">Save</button>
+      <button style="flex: none; width: 100vw">Discard</button>
+      <button style="flex: none; width: 200px">Save</button>
     </div>
   </body>
 </html>

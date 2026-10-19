@@ -13,11 +13,15 @@
   const debounceMs = 250
   // A problem counts once it has been in every check for this long, so animations and transitions settle first.
   const confirmMs = 500
+  // A page that never stops changing (a ticking clock, a streaming reply) is still measured this often, and
+  // layoutProblems' 1 s wait still sees a problem confirmed.
+  const maxWaitMs = 500
 
   const firstSeen = new Map()
   const logged = new Set()
   let confirmed = []
   let timer
+  let pendingSince
 
   const clean = (text) => (text ?? '').replace(/\s+/g, ' ').trim()
   const accessibleName = (el) =>
@@ -40,9 +44,11 @@
     const rect = el.getBoundingClientRect()
     return rect.width > 0 && rect.height > 0 && el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
   }
-  // Behind a modal the background is aria-hidden or inert, or inherits the body's `pointer-events: none`.
-  const isCandidate = (el) =>
-    isVisible(el) && !el.closest('[aria-hidden=true], [inert]') && getComputedStyle(el).pointerEvents !== 'none'
+  // Behind a modal the background is aria-hidden or inert, or inherits the body's `pointer-events: none`. A disabled
+  // control sets `pointer-events: none` on itself (ui/button.tsx) and still counts.
+  const inheritsNoPointer = (el) =>
+    getComputedStyle(el).pointerEvents === 'none' && getComputedStyle(el.parentElement).pointerEvents === 'none'
+  const isCandidate = (el) => isVisible(el) && !el.closest('[aria-hidden=true], [inert]') && !inheritsNoPointer(el)
 
   // The math of src/hooks/use-keyboard-inset.ts.
   const keyboardOpen = (vv) => innerHeight - vv.height - vv.offsetTop > 100
@@ -56,28 +62,29 @@
   const containersOf = (el) => {
     const chain = []
     for (let node = el; ; node = node.parentElement) {
-      if (getComputedStyle(node).position === 'fixed') return { chain, fixed: true }
-      if (!node.parentElement || node.parentElement === document.body) return { chain, fixed: false }
+      if (getComputedStyle(node).position === 'fixed') return { chain, fixed: node }
+      if (!node.parentElement || node.parentElement === document.body) return { chain, fixed: null }
       chain.push(node.parentElement)
     }
   }
 
   const room = {
-    up: (node) => node.scrollTop > 0,
-    down: (node) => node.scrollTop + node.clientHeight < node.scrollHeight - 1,
-    left: (node) => node.scrollLeft > 0,
-    right: (node) => node.scrollLeft + node.clientWidth < node.scrollWidth - 1,
+    up: (node) => node.scrollTop,
+    down: (node) => node.scrollHeight - node.clientHeight - node.scrollTop,
+    left: (node) => node.scrollLeft,
+    right: (node) => node.scrollWidth - node.clientWidth - node.scrollLeft,
   }
   const axisOf = { up: 'overflowY', down: 'overflowY', left: 'overflowX', right: 'overflowX' }
-  const canScroll = ({ chain, fixed }, direction) => {
+  // How many pixels el's scrolling containers, the page included, can still move it in a direction.
+  const scrollRoom = ({ chain, fixed }, direction) => {
     const axis = axisOf[direction]
-    const documentScrolls = ![document.documentElement, document.body].some((node) =>
-      /hidden|clip/.test(getComputedStyle(node)[axis]),
-    )
-    return (
-      chain.some((node) => /auto|scroll/.test(getComputedStyle(node)[axis]) && room[direction](node)) ||
-      (!fixed && documentScrolls && room[direction](document.scrollingElement))
-    )
+    const lists = chain
+      .filter((node) => /auto|scroll/.test(getComputedStyle(node)[axis]))
+      .reduce((sum, node) => sum + room[direction](node), 0)
+    const documentScrolls =
+      !fixed &&
+      ![document.documentElement, document.body].some((node) => /hidden|clip/.test(getComputedStyle(node)[axis]))
+    return documentScrolls ? lists + room[direction](document.scrollingElement) : lists
   }
 
   const clipArea = ({ chain }, area) =>
@@ -94,15 +101,24 @@
     }, area)
 
   const isOffscreen = (rect, area, containers) => {
-    // Wholly past a side edge is a drawer or carousel slide parked off canvas on purpose.
-    if (rect.right <= area.left || rect.left >= area.right) return false
+    // A drawer parked wholly past a side edge, like the collapsed desktop sidebar, is off canvas on purpose.
+    const parked = containers.fixed?.getBoundingClientRect()
+    if (parked && (parked.right <= area.left || parked.left >= area.right)) return false
     const directions = [
       rect.top < area.top - 1 && 'up',
       rect.bottom > area.bottom + 1 && 'down',
       rect.left < area.left - 1 && 'left',
       rect.right > area.right + 1 && 'right',
     ].filter(Boolean)
-    return directions.some((direction) => !canScroll(containers, direction))
+    return directions.some((direction) => scrollRoom(containers, direction) < 1)
+  }
+
+  // The fixed or sticky box the cover belongs to, unless el sits in it too: only that kind stays put while el scrolls.
+  const pinnedCover = (hit, el) => {
+    for (let node = hit; node && !node.contains(el); node = node.parentElement) {
+      if (/fixed|sticky/.test(getComputedStyle(node).position)) return node
+    }
+    return null
   }
 
   const isCovered = (el, rect, area, containers) => {
@@ -114,24 +130,34 @@
     if (!hit || hit === el || el.contains(hit) || hit.contains(el)) return false
     // A toast floats in a live region and leaves on its own. An inline alert over a control is still a bug.
     if (hit.closest('[aria-live], [role=status], [role=alert], [role=log]') && containersOf(hit).fixed) return false
-    // A sticky header or fixed footer over content the page can still scroll out from under it.
-    const hitRect = hit.getBoundingClientRect()
-    return !canScroll(containers, hitRect.top + hitRect.height / 2 > innerHeight / 2 ? 'down' : 'up')
+    // Popovers and tooltips open next to their trigger on purpose, over whatever sits beside it.
+    if (hit.closest('[data-radix-popper-content-wrapper], [role=tooltip]')) return false
+    // A sticky header or fixed footer is fine when the page can still scroll el all the way out from under it.
+    const cover = pinnedCover(hit, el)?.getBoundingClientRect()
+    if (!cover) return true
+    return cover.top + cover.height / 2 > innerHeight / 2
+      ? scrollRoom(containers, 'down') < rect.bottom - cover.top
+      : scrollRoom(containers, 'up') < cover.bottom - rect.top
   }
 
+  // The focused element, and the buttons of every open dialog (the screen's main button may sit in the dialog under
+  // a popover), or of the focused element's form when no dialog is open.
   const behindKeyboard = (vv, candidates) => {
     if (!keyboardOpen(vv)) return []
     const line = vv.offsetTop + vv.height
     const focused = document.activeElement
-    const topDialog = [...document.querySelectorAll('[role=dialog], [role=alertdialog], dialog[open]')]
-      .filter(isVisible)
-      .at(-1)
-    const scope = topDialog ?? focused?.closest('form')
-    const buttons = candidates.filter((el) => scope?.contains(el) && el.matches('button, [role=button]'))
-    return [...new Set([focused, ...buttons])].filter(
-      (el) =>
-        candidates.includes(el) && el.getBoundingClientRect().bottom > line + 1 && !canScroll(containersOf(el), 'down'),
+    const dialogs = [...document.querySelectorAll('[role=dialog], [role=alertdialog], dialog[open]')].filter(
+      (dialog) => isVisible(dialog) && !dialog.closest('[aria-hidden=true], [inert]'),
     )
+    const scopes = dialogs.length > 0 ? dialogs : [focused?.closest('form')].filter(Boolean)
+    const buttons = candidates.filter(
+      (el) => el.matches('button, [role=button]') && scopes.some((scope) => scope.contains(el)),
+    )
+    return [...new Set([focused, ...buttons])].filter((el) => {
+      if (!candidates.includes(el)) return false
+      const shift = el.getBoundingClientRect().bottom - line
+      return shift > 1 && scrollRoom(containersOf(el), 'down') < shift
+    })
   }
 
   // The `overflow` check the explore prompt used to run by hand, now at every width.
@@ -170,6 +196,8 @@
   }
 
   const check = () => {
+    clearTimeout(timer)
+    pendingSince = undefined
     const now = performance.now()
     const current = new Map(measure().map((problem) => [`${problem.kind} ${problem.target}`, problem]))
     for (const key of firstSeen.keys()) if (!current.has(key)) firstSeen.delete(key)
@@ -188,8 +216,13 @@
     timer = setTimeout(check, delay)
   }
 
+  const onChange = () => {
+    pendingSince ??= performance.now()
+    if (performance.now() - pendingSince >= maxWaitMs) check()
+    else schedule(debounceMs)
+  }
+
   const start = () => {
-    const onChange = () => schedule(debounceMs)
     new MutationObserver(onChange).observe(document, {
       subtree: true,
       childList: true,

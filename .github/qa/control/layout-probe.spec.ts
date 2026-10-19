@@ -47,9 +47,12 @@ test('an overlay that leaves after 200 ms is never reported', async ({ page }) =
 })
 
 test('an inline alert over a button is covered, unlike a toast', async ({ page }) => {
-  await page.setContent(
-    '<button>Retry</button><p role="alert" style="position: relative; margin-top: -20px; background: #fee">Failed</p>',
-  )
+  // Scrolling moves the alert with the button, so the room the page has below does not excuse it.
+  await page.setContent(`
+    <div style="height: 600px"></div>
+    <button>Retry</button>
+    <p role="alert" style="position: relative; margin-top: -20px; background: #fee">Failed</p>
+    <div style="height: 2000px"></div>`)
   expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Retry"' }])
 })
 
@@ -62,8 +65,26 @@ test('unbreakable text wider than a phone overflows', async ({ page }) => {
 })
 
 test('a focused field under the keyboard is reported', async ({ page }) => {
-  // keyboard.html replaces window.visualViewport with one 300 px shorter than the window before the probe starts.
-  expect(await problemsOf(page, 'keyboard.html')).toEqual([{ kind: 'behind-keyboard', target: 'textbox "Name"' }])
+  // fake-keyboard.js replaces window.visualViewport with one 300 px shorter than the window before the probe starts.
+  // The dialog under the popover still counts, and so does its disabled button.
+  expect(await problemsOf(page, 'keyboard.html')).toEqual([
+    { kind: 'behind-keyboard', target: 'textbox "Name"' },
+    { kind: 'behind-keyboard', target: 'button "Continue"' },
+  ])
+})
+
+test('with no dialog open, the focused field form buttons count', async ({ page }) =>
+  expect(await problemsOf(page, 'keyboard-form.html')).toEqual([
+    { kind: 'behind-keyboard', target: 'button "Subscribe"' },
+  ]))
+
+test('a page that never stops changing is still measured', async ({ page }) => {
+  await page.setContent(`
+    <span id="clock"></span>
+    <button style="position: fixed; bottom: 10px">Send</button>
+    <div style="position: fixed; bottom: 0; width: 100%; height: 60px; background: #ddd"></div>
+    <script>setInterval(() => (document.getElementById('clock').textContent = Date.now()), 100)</script>`)
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Send"' }])
 })
 
 test('each problem is logged once, after one ready line', async ({ page }) => {
