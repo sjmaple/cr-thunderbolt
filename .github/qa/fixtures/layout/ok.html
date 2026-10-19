@@ -1,0 +1,40 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Ok</title>
+  </head>
+  <body>
+    <form>
+      <label for="email">Email</label>
+      <input id="email" type="email" />
+      <textarea aria-label="Notes"></textarea>
+      <select aria-label="Plan">
+        <option>Free</option>
+      </select>
+      <a href="#terms">Terms</a>
+      <button>Sign up</button>
+    </form>
+    <!-- A short list on a page that does not scroll: its lower links are clipped, and the text under them is not on
+         top of them. -->
+    <div style="height: 60px; overflow: auto">
+      <a href="#1" style="display: block">Chat 1</a>
+      <a href="#2" style="display: block">Chat 2</a>
+      <a href="#3" style="display: block">Chat 3</a>
+      <a href="#4" style="display: block">Chat 4</a>
+      <a href="#5" style="display: block">Chat 5</a>
+    </div>
+    <p>Recent</p>
+    <!-- A collapsed drawer parked past the left edge, like the desktop sidebar. -->
+    <nav style="position: fixed; top: 0; left: -300px; width: 250px">
+      <a href="#chats">Chats</a>
+    </nav>
+    <!-- A closed menu that fades out in place, half past the bottom edge. -->
+    <div style="position: fixed; bottom: -20px; left: 0; opacity: 0">
+      <button style="height: 40px">Rename</button>
+    </div>
+  </body>
+</html>

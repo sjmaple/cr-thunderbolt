@@ -209,8 +209,10 @@ commit and the PR it would open.
 
 Every out dir must sit directly under the repo root: the specs import `../../../e2e/helpers`.
 
-The scripts' tests and type check: `bun run test:qa` and `bunx tsc -p .github/qa` (the `qa` job in `ci.yml` runs
-both when a QA file changes).
+The scripts' tests and type check: `bun run test:qa` and `bunx tsc -p .github/qa`. The layout probe
+(`layout-probe.js`) has its own tests on static pages in `fixtures/layout/`:
+`bunx playwright test --config .github/qa/playwright.config.ts --project probe`. The `qa` job in `ci.yml` runs all
+three when a QA file changes.
 
 ## Fake Google
 

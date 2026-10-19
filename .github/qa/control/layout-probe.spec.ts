@@ -1,0 +1,91 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+// Pins the layout probe's rules on static pages. The probe loads as an init script, as the explore agent's browser
+// loads it, so it sees each page from its first paint.
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { expect, test, type Page } from '@playwright/test'
+import { layoutProblems } from '../layout'
+
+const probePath = resolve(import.meta.dirname, '../layout-probe.js')
+const fixture = (name: string) => pathToFileURL(resolve(import.meta.dirname, '../fixtures/layout', name)).href
+
+const problemsOf = async (page: Page, name: string) => {
+  await page.addInitScript({ path: probePath })
+  await page.goto(fixture(name))
+  return layoutProblems(page)
+}
+
+const consoleLines = (page: Page) => {
+  const lines: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error' && message.text().startsWith('[qa-layout]')) lines.push(message.text())
+  })
+  return lines
+}
+
+test('a clean form has no problems', async ({ page }) => expect(await problemsOf(page, 'ok.html')).toEqual([]))
+
+test('a fixed footer over a button is covered', async ({ page }) =>
+  expect(await problemsOf(page, 'covered.html')).toEqual([{ kind: 'covered', target: 'button "Continue"' }]))
+
+test('a button pushed out of a fixed container is offscreen', async ({ page }) =>
+  expect(await problemsOf(page, 'offscreen.html')).toEqual([{ kind: 'offscreen', target: 'button "Save"' }]))
+
+test('a button below the fold of a scrollable page is fine', async ({ page }) =>
+  expect(await problemsOf(page, 'scrollable.html')).toEqual([]))
+
+test('the background of a modal is not covered', async ({ page }) =>
+  expect(await problemsOf(page, 'modal.html')).toEqual([]))
+
+test('an overlay that leaves after 200 ms is never reported', async ({ page }) => {
+  const lines = consoleLines(page)
+  expect(await problemsOf(page, 'transient.html')).toEqual([])
+  expect(lines.filter((line) => line.startsWith('[qa-layout] covered'))).toEqual([])
+})
+
+test('an inline alert over a button is covered, unlike a toast', async ({ page }) => {
+  await page.setContent(
+    '<button>Retry</button><p role="alert" style="position: relative; margin-top: -20px; background: #fee">Failed</p>',
+  )
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Retry"' }])
+})
+
+test('unbreakable text wider than a phone overflows', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect((await problemsOf(page, 'overflow.html')).map((problem) => problem.kind).sort()).toEqual([
+    'overflow-page',
+    'overflow-text',
+  ])
+})
+
+test('a focused field under the keyboard is reported', async ({ page }) => {
+  // keyboard.html replaces window.visualViewport with one 300 px shorter than the window before the probe starts.
+  expect(await problemsOf(page, 'keyboard.html')).toEqual([{ kind: 'behind-keyboard', target: 'textbox "Name"' }])
+})
+
+test('each problem is logged once, after one ready line', async ({ page }) => {
+  const lines = consoleLines(page)
+  await problemsOf(page, 'covered.html')
+  // A second copy on the same page (a repro spec's layoutProblems) and the page's iframe stay silent, and a problem
+  // that goes away and comes back is not logged again.
+  await page.addScriptTag({ path: probePath })
+  await page.evaluate(() => document.getElementById('footer')?.remove())
+  expect(await layoutProblems(page)).toEqual([])
+  await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div id="footer">Footer</div>'))
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Continue"' }])
+  expect(lines).toEqual(['[qa-layout] ready', '[qa-layout] covered button "Continue"'])
+})
+
+test('scrolling the page measures it again', async ({ page }) => {
+  await problemsOf(page, 'covered.html')
+  await page.evaluate(() => scrollTo(0, 0))
+  expect(await layoutProblems(page)).toEqual([])
+})
+
+test('layoutProblems injects the probe into a page that lacks it', async ({ page }) => {
+  await page.goto(fixture('covered.html'))
+  expect(await layoutProblems(page)).toEqual([{ kind: 'covered', target: 'button "Continue"' }])
+})

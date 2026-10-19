@@ -33,5 +33,13 @@ export default defineConfig({
     { name: 'candidates', testDir: outDir, testMatch: /\/repro\/[\w-]+\.spec\.ts$/ },
     // The stack health check that must pass in the same run.
     { name: 'control', testDir: 'control', testMatch: 'stack.spec.ts' },
+    // The layout probe on static pages. It needs no stack, and the replay's anchored filters never select it.
+    {
+      name: 'probe',
+      testDir: 'control',
+      testMatch: 'layout-probe.spec.ts',
+      outputDir: resolve('test-results/qa-probe'),
+      use: { baseURL: undefined, video: 'off', trace: 'off' },
+    },
   ],
 })

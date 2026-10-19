@@ -1,0 +1,30 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Keyboard</title>
+  </head>
+  <body>
+    <form>
+      <!-- Pinned to the bottom, so a 300 px keyboard hides it. -->
+      <input placeholder="Name" style="position: fixed; bottom: 40px; left: 0" />
+      <!-- Under the keyboard too, but the page scrolls down to it. -->
+      <div style="height: 2000px"></div>
+      <button>Send</button>
+    </form>
+    <script>
+      // Desktop Chromium has no software keyboard: fake the visual viewport an open one leaves.
+      const keyboardOpen = Object.assign(new EventTarget(), {
+        width: document.documentElement.clientWidth,
+        height: innerHeight - 300,
+        offsetLeft: 0,
+        offsetTop: 0,
+      })
+      Object.defineProperty(window, 'visualViewport', { value: keyboardOpen, configurable: true })
+      document.querySelector('input').focus()
+    </script>
+  </body>
+</html>
