@@ -87,7 +87,7 @@ at most two that:
 
 - change app code under `src/` (tests, test helpers, docs and translations are left alone);
 - touch no sensitive path: the same list that keeps the fix agent away (`isSensitive` in `fix.ts`);
-- map to a charter in the script's one table (c2 to c6 and c8), one canary per charter, both on the same kind of AI;
+- map to a charter in the script's one table (c2 to c6), one canary per charter, both on the same kind of AI;
 - change no runtime code outside `src/` (`shared/`, `backend/`, `public/`, `index.html`, the Vite config): the reversal
   covers `src/` only, and the canary backend runs from the unpatched checkout;
 - can be reverted on the current tree with `git apply -R --check`.
@@ -110,9 +110,11 @@ skipped fix with the reason. Most often a later change touched the same lines; t
 
 ## Functions, coverage and the free session
 
-`functions.json` lists per area (c1 to c8) what must work on every platform: an id, an observable outcome, and `reload: true` when
+`functions.json` lists per area (c1 to c7) what must work on every platform: an id, an observable outcome, and `reload: true` when
 the outcome must survive a reload. A function that spans two areas has one owner. Each charter in `charters/` names
 the function ids its steps cover. Integrations are in no list; Google is covered through the fake Google below.
+The old phone-only charter c8 is gone: every charter runs on desktop and phone, and its content moved into c2, c4 and c6.
+Its `*-fit` functions were dropped because the layout probe covers screen fit.
 
 **Coverage** counts a function only when a `passed` or `failed` attempt quotes text a browser tool returned in that
 attempt's window, after a browser action, and, for a passed `reload` function, after a navigation that follows a
@@ -322,9 +324,9 @@ Measured locally on 2026-09-30 (Sonnet 5.5 explorer, Opus 5.5 judge and fix agen
 
 | Step                                                         | Sessions | Cost               | Turns   | Duration    | Stop                  |
 | ------------------------------------------------------------ | -------- | ------------------ | ------- | ----------- | --------------------- |
-| explore, fake AI (c1, c2, c4, c6, c8)                        | 12       | $0.44–1.22         | 91–227  | 2.6–6.2 min | all finished          |
+| explore, fake AI (c1, c2, c4, c6, old phone charter c8)      | 12       | $0.44–1.22         | 91–227  | 2.6–6.2 min | all finished          |
 | explore, real providers (c3, c5)                             | 4        | $0.48–1.11         | 81–134  | 3.3–7.4 min | all finished          |
-| explore, canary leg (c8, hand-written canaries)              | 2        | $0.94–1.03         | 154–162 | 4.6–4.8 min | all finished          |
+| explore, canary leg (old phone charter c8, hand-written)     | 2        | $0.94–1.03         | 154–162 | 4.6–4.8 min | all finished          |
 | judge (Opus 5.5, one call per finding, 4–5 findings per run) | 4 runs   | $0.05–0.08 per run | –       | –           | –                     |
 | fix agent (one overflow bug)                                 | 1        | $0.26              | 21      | 3.1 min     | finished, spec passes |
 

@@ -12,6 +12,7 @@ Start state: fresh user, fake AI (select "Opus 5.5").
    Function: `privacy-toggles`.
 3. Create some data (two chats, a skill), export your data, delete the local data, import the export, and check
    everything came back. Function: `export-import`.
-4. Visit every other settings page once and check it loads. Function: `settings-pages`.
+4. Visit every other settings page once and check it loads. Open the detail screen of one model (Settings → Models)
+   and of one connection (Settings → Connections). Function: `settings-pages`.
 
 Out of bounds: account deletion, sign out, sync and Settings → Devices (c7 covers them; this leg has no sync backend).
