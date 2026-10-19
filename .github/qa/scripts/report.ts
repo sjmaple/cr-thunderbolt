@@ -11,6 +11,7 @@ import { z } from 'zod'
 import type { Canary } from './canaries'
 import { type Filed, sanitize, type Scorecard } from './file-findings'
 import { type FindingFile, loadFindings, parseSession, realAiCharters } from './findings'
+import { selects } from './legs'
 import type { Verified, VerifiedFinding } from './verify'
 
 type Stop = 'done' | 'max_budget' | 'max_turns' | 'timeout' | 'error'
@@ -625,14 +626,15 @@ export const runSummary = async (
  * Canary leg: match its confirmed findings against the canaries `canaries.ts` picked and the baseline (the
  * same findings replayed on the normal build, its `candidates.json`), and write `canary.json`. The filer never sees
  * the canary leg: the file job downloads only the weekly leg's `verified.json`. A dispatch's `charters` list runs only
- * some canary legs; the canaries of the others never ran, so they are left out rather than counted as missed.
+ * some canary legs, chosen as `planLegs` chooses them; the canaries of the others never ran, so they are left out
+ * rather than counted as missed.
  */
 export const runCanary = async (outDir: string, baselineDir: string, canariesPath: string, chartersInput = '') => {
   const verified: Verified = await Bun.file(join(outDir, 'verified.json')).json()
   const baseline: Verified = await Bun.file(join(baselineDir, 'candidates.json')).json()
   const picked: Canary[] = await Bun.file(canariesPath).json()
   const ran = chartersInput.split(/[ ,]+/).filter(Boolean)
-  const canaries = ran.length === 0 ? picked : picked.filter((c) => ran.includes(c.charter))
+  const canaries = picked.filter((c) => selects(ran, c.charter))
   const result = matchCanaries(canaries, verified.confirmed, baseline)
   await writeFile(join(outDir, 'canary.json'), JSON.stringify(result, null, 2))
   return result

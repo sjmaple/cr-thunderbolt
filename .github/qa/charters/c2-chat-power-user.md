@@ -2,7 +2,7 @@
 
 Goal: long and messy chat sessions keep working.
 
-Start state: fresh user, desktop viewport, fake AI (select "Opus 5.5").
+Start state: fresh user, fake AI (select "Opus 5.5").
 
 1. A thread of at least 12 messages, including a 2,000-character prompt and one with Markdown and code. Scroll up and
    down.

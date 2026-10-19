@@ -2,7 +2,7 @@
 
 Goal: every preference sticks, and exporting and importing data keeps it intact.
 
-Start state: fresh user, desktop viewport, fake AI (select "Opus 5.5").
+Start state: fresh user, fake AI (select "Opus 5.5").
 
 1. Settings → Preferences: change the preferred name, theme, language (switch to another language, look around, switch
    back), distance and temperature units, time format, currency and location. Reload after each change.

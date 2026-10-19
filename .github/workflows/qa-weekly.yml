@@ -19,7 +19,9 @@ on:
         type: boolean
         default: true
       charters:
-        description: Comma-separated charter ids, free for the free session, e.g. c4-skills-projects,free (empty = all)
+        description: >-
+          Comma-separated charter ids (every platform), session ids (one platform), or free, e.g.
+          c4-skills-projects,c2-chat-power-user-phone,free (empty = all)
         type: string
         default: ''
       journey:
@@ -138,63 +140,17 @@ jobs:
             ${{ vars.QA_AUTOFIX_ENABLED == 'true' && github.ref == 'refs/heads/main' &&
             (github.event_name == 'schedule' || inputs.autofix) }}
         run: |
-          # Commas and spaces both separate charter ids; the same list feeds the check and the legs below.
-          only=$(jq --null-input --compact-output --arg charters "$CHARTERS" '[$charters | splits("[ ,]+") | select(. != "")]')
-          if [ -n "$CHARTERS" ] && [ "$only" = '[]' ]; then echo "::error::No charter id in '$CHARTERS'"; exit 1; fi
-          # The charters that explore with the real AI providers, free sessions included, are listed once, in the QA
-          # scripts.
-          real=$(bun -e "import { realAiCharters } from './.github/qa/scripts/findings'; console.log(JSON.stringify([...realAiCharters]))")
           # This week's case for the free session, unless the dispatch names one. It runs on every platform.
           journey=$(.github/qa/scripts/explore.sh journey "$JOURNEY")
-          # shellcheck disable=SC2016 # jq variables
-          # One explore session per leg. Each canary leg runs its fix's charter on the canary build and is never filed.
-          all=$(jq --null-input --compact-output --argjson real "$real" --arg journey "$journey" \
-            --argjson platforms "$(cat .github/qa/platforms.json)" --slurpfile canaries "$RUNNER_TEMP/qa-canaries.json" '
-            {dist: "qa-dist", out: "qa-out", artifact: "qa-explore", mcp: ".github/qa/mcp.json", viewport: "1280x800",
-             onboarding: false, real: false, postgres: false} as $leg
-            | [{charter: "c1-first-run", onboarding: true},
-               {charter: "c2-chat-power-user"},
-               {charter: "c3-models-providers"},
-               {charter: "c4-skills-projects"},
-               {charter: "c5-widgets-connections"},
-               {charter: "c6-settings-data"},
-               {charter: "c7-two-devices", postgres: true, mcp: ".github/qa/mcp.json .github/qa/mcp-two-devices.json",
-                artifact: "qa-sync"},
-               {charter: "c8-phone", viewport: "390x844"}]
-              + ($platforms | map({charter: "free-\($journey)-\(.id)", viewport, mcp}))
-            | map($leg + . | if (.charter as $c | $real | index($c)) then .real = true | .artifact = "qa-real" else . end)
-            | . + [$canaries[0][] as $canary | .[] | select(.charter == $canary.charter)
-                   | .dist = "qa-dist-canary" | .out = "qa-out-canary" | .artifact = "qa-canary"]')
-          # "free" selects the free session on every platform.
-          unknown=$(jq --raw-output --argjson only "$only" '$only - map(.charter) - ["free"] | join(" ")' <<< "$all")
-          if [ -n "$unknown" ]; then echo "::error::Unknown charter $unknown"; exit 1; fi
-          legs=$(jq --compact-output --argjson only "$only" 'map(select(.charter as $c | $only == []
-            or ($only | index($c)) or (($c | startswith("free-")) and ($only | index("free")))))' <<< "$all")
-          # Replay each artifact prefix on the kind of stack its sessions explored: pglite, Postgres + PowerSync for c7
-          # (sync), or the real AI providers (real). Sync and real findings share qa-out and are judged with the
-          # weekly ones.
-          verify=$(jq --compact-output '
-            [{name: "weekly", out: "qa-out", artifact: "qa-explore", dist: "qa-dist",
-              onboarding: any(.[]; .onboarding), postgres: false}]
-            + if any(.[]; .artifact == "qa-sync")
-              then [{name: "sync", out: "qa-out", artifact: "qa-sync", dist: "qa-dist", onboarding: false, postgres: true}]
-              else [] end
-            + if any(.[]; .artifact == "qa-real")
-              then [{name: "real", out: "qa-out", artifact: "qa-real", dist: "qa-dist", onboarding: false, postgres: false,
-                     real: true}]
-              else [] end
-            + if any(.[]; .artifact == "qa-canary")
-              # The canary findings replay on the canary build, then on the normal one: a canary counts only when its
-              # finding fails on the first and passes on the second. canaries.ts picks charters of one kind of AI.
-              then any(.[]; .artifact == "qa-canary" and .real) as $real
-                | [{name: "canary", out: "qa-out-canary", dist: "qa-dist-canary"},
-                   {name: "canary-baseline", out: "qa-out-canary-baseline", dist: "qa-dist"}]
-                | map(. + {artifact: "qa-canary", onboarding: false, postgres: false, real: $real})
-              else [] end' <<< "$legs")
+          # One explore session per charter and platform, plus the free session and the canary legs; the replay and
+          # judge legs follow from them. An unknown charter id fails here, with the CLI's own ::error:: line.
+          if ! legs=$(bun .github/qa/scripts/legs.ts --charters "$CHARTERS" --journey "$journey" \
+            --canaries "$RUNNER_TEMP/qa-canaries.json"); then
+            echo "$legs"
+            exit 1
+          fi
           {
-            echo "legs=$legs"
-            echo "verify=$verify"
-            echo "judge=$(jq --compact-output 'map(select(.name == "weekly" or .name == "canary"))' <<< "$verify")"
+            echo "$legs"
             echo "live=$LIVE"
             echo "autofix=$AUTOFIX"
           } >> "$GITHUB_OUTPUT"

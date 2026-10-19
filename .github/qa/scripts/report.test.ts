@@ -657,7 +657,11 @@ describe('runSummary', () => {
 })
 
 describe('canaries', () => {
-  const canaries = [canary('a', 'c6-settings-data'), canary('b', 'c4-skills-projects'), canary('c', 'c8-phone')]
+  const canaries = [
+    canary('a', 'c6-settings-data-desktop'),
+    canary('b', 'c4-skills-projects-desktop'),
+    canary('c', 'c8-phone'),
+  ]
   const finding = (id: string, charterDir = 'c8-phone', area = 'other', type = 'console-error') => ({
     ...verifiedFinding(area, type, id),
     charterDir,
@@ -719,17 +723,18 @@ describe('canaries', () => {
     expect(JSON.parse(await readFile(join(dir, 'canary.json'), 'utf8'))).toEqual(result)
   })
 
-  it('measures only the canaries whose charter a dispatch ran', async () => {
+  it('measures only the canaries a dispatch selected, by charter id, session id or free', async () => {
     const baselineDir = join(dir, 'baseline')
     await mkdir(baselineDir)
     await writeFile(join(baselineDir, 'candidates.json'), JSON.stringify(emptyVerified))
     await writeFile(join(dir, 'verified.json'), JSON.stringify(emptyVerified))
     await writeFile(join(dir, 'canaries.json'), JSON.stringify(canaries))
+    const ran = async (input: string) =>
+      (await runCanary(dir, baselineDir, join(dir, 'canaries.json'), input)).results.map((r) => r.charter)
 
-    const result = await runCanary(dir, baselineDir, join(dir, 'canaries.json'), 'c4-skills-projects, free')
-
-    expect(result).toMatchObject({ total: 1, found: 0 })
-    expect(result.results.map((r) => r.charter)).toEqual(['c4-skills-projects'])
+    expect(await ran('c4-skills-projects, free')).toEqual(['c4-skills-projects-desktop'])
+    expect(await ran('c4-skills-projects-desktop')).toEqual(['c4-skills-projects-desktop'])
+    expect(await ran('c4-skills-projects-phone')).toEqual([])
   })
 
   it('fails loudly without a baseline', async () => {

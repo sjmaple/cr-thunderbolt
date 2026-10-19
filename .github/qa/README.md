@@ -59,8 +59,9 @@ code from. The fallback is a checkout the job's user cannot write during replay.
 
 1. **build**: the normal, onboarding (c1) and canary builds, then the guard: a fresh stack must pass
    `control/stack.spec.ts`, or the run stops and `notify-on-failure` fires.
-2. **explore**: one leg per charter and one per free-session platform (`free-<case>-<platform>`), with
-   `claude-code-action`, the Playwright MCP (`mcp.json`, plus `mcp-two-devices.json` for c7's second browser) and the
+2. **explore**: one leg per charter and platform, named `<charter>-<platform>` (`c4-skills-projects-phone`), and one
+   per free-session platform (`free-<case>-<platform>`); `legs.ts` plans them. A canary adds its session's leg on the
+   canary build. Each runs with `claude-code-action`, the Playwright MCP (`mcp.json`, plus `mcp-two-devices.json` for c7's second browser) and the
    prompt `explore.sh prompt` builds. Attempts, findings and repro specs are written as they happen, so a cut session
    keeps its work.
 3. **replay** (`verify.ts replay`): schema, oracle (`noise.txt`) and lint gates, then each spec 3 times. 3 of 3
@@ -109,7 +110,7 @@ skipped fix with the reason. Most often a later change touched the same lines; t
 
 ## Functions, coverage and the free session
 
-`functions.json` lists per area (c1 to c8) what must work: an id, an observable outcome, and `reload: true` when
+`functions.json` lists per area (c1 to c8) what must work on every platform: an id, an observable outcome, and `reload: true` when
 the outcome must survive a reload. A function that spans two areas has one owner. Each charter in `charters/` names
 the function ids its steps cover. Integrations are in no list; Google is covered through the fake Google below.
 
@@ -124,6 +125,8 @@ uses to judge the AI's answers) on every platform in `platforms.json`, with the 
 
 - `explore.sh journey` picks the case: weeks since 1970 modulo the number of cases, so every case runs once before
   any repeats. A dispatch's `journey` input forces one; `charters: free` runs only the free session.
+- A dispatch's `charters` input takes charter ids (every platform), session ids (one platform) and `free`, e.g.
+  `c4-skills-projects,c2-chat-power-user-phone,free`. Canary legs follow the same selection.
 - Add a case by appending an object with a new `id` (it shifts the rotation once). `bun run test:qa` checks it.
 - A platform is one entry (an `id` without a hyphen, a viewport, an MCP config) and one explore leg. A native
   platform also needs its driver and a new `viewport` value in the finding schema.
@@ -146,13 +149,17 @@ Everything runs from the repo root. The stack uses fixed ports (1424, 1425, 8005
 # The guard
 bunx playwright test --config .github/qa/playwright.config.ts --project control
 
-# One session. The last argument is the budget cap in USD (default 2).
-ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c2-chat-power-user qa-out 4
-QA_MCP_VIEWPORT=390x844 ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c8-phone qa-out 4
+# One session, named <charter>-<platform>; the platform sets the viewport and the MCP config. The last argument is
+# the budget cap in USD (default 2).
+ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c2-chat-power-user-desktop qa-out 4
+ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run c2-chat-power-user-phone qa-out 4
 ```
 
+- **c7** needs its second browser:
+  `QA_MCP_CONFIG='.github/qa/mcp.json .github/qa/mcp-two-devices.json' … explore.sh run c7-two-devices-desktop qa-out 4`.
+
 - **The free session** runs one case on one platform per call, named `free-<case>-<platform>` (`explore.sh journey`
-  prints this week's case). It takes its viewport and MCP config from `platforms.json` and needs the real-provider
+  prints this week's case). Like every session it takes its viewport and MCP config from `platforms.json`, and it needs the real-provider
   stack below: `ANTHROPIC_API_KEY=… .github/qa/scripts/explore.sh run free-trip-planner-phone qa-out 4`.
 - **c3, c4, c5 and the free session** use real providers: start the stack with `QA_REAL_PROVIDERS=true` and
   `ANTHROPIC_API_KEY`, `TINFOIL_API_KEY`, `TINFOIL_ENCLAVE_URL`, `EXA_API_KEY` in its environment. Replay their
@@ -240,7 +247,8 @@ restarting the stack disconnects Google.
 3. Set `QA_AGENT_ENABLED=true`, leave `QA_LINEAR_ENABLED` and `QA_AUTOFIX_ENABLED` unset. From now on the
    Monday schedule runs too, still as a dry run.
 4. Run the workflow by hand from `main` with `dry_run` on (the default), first with one charter
-   (`charters: c2-chat-power-user`; separate several ids with commas or spaces), then with all of them. Read the
+   (`charters: c2-chat-power-user`, or one session such as `c2-chat-power-user-phone`; separate several ids with commas
+   or spaces), then with all of them. Read the
    job summary.
 5. Set `QA_LINEAR_ENABLED=true` to file for real. The schedule then files live; a dispatch files live only with
    `dry_run` off. A dispatch from another branch is always a dry run.
