@@ -12,6 +12,7 @@ import {
   checkCoverage,
   matchCanaries,
   nothingExplored,
+  probeGaps,
   renderReport,
   runCanary,
   runSummary,
@@ -198,6 +199,18 @@ describe('renderReport', () => {
     expect(report).toContain('- **c1**: no function list')
   })
 
+  it('lists each session whose pages loaded without the layout probe, and nothing when all had it', () => {
+    const report = renderReport({
+      sessions: [session({ charter: 'c8-phone' }), session({ charter: 'c2-chat-desktop' })],
+      coverage: new Map(),
+      found: [],
+      probe: new Map([['c8-phone', { loads: 4, missing: 1 }]]),
+    })
+    expect(report).toContain('- **c8-phone**: layout probe missing on 1 of 4 page loads')
+    expect(report).not.toContain('**c2-chat-desktop**: layout probe')
+    expect(renderReport({ sessions: [session({})], coverage: new Map(), found: [] })).not.toContain('layout probe')
+  })
+
   it('has no incomplete banner when every session finished', () => {
     expect(renderReport({ sessions: [session({})], coverage: new Map(), found: [] })).not.toContain('INCOMPLETE')
   })
@@ -206,7 +219,7 @@ describe('renderReport', () => {
     const verified: Verified = {
       ...emptyVerified,
       confirmed: [verifiedFinding('skills', 'page-error')],
-      flaky: [verifiedFinding('layout', 'overflow', '2')],
+      flaky: [verifiedFinding('layout', 'layout', '2')],
       observations: [{ charterDir: 'c1', id: '9', finding: raw('chat', 'x') }],
       dropped: [
         { file: { charterDir: 'c1', id: '3', reason: 'x' }, gate: 'schema', reason: 'bad | json' },
@@ -349,16 +362,16 @@ describe('renderReport findings and caps', () => {
   })
 
   it('lists each flaky finding with its evidence, without foreign links, and withholds security text', () => {
-    const overflow = { ...verifiedFinding('layout', 'overflow', '2'), replay: { failed: 1, runs: 3 } }
+    const overflow = { ...verifiedFinding('layout', 'layout', '2'), replay: { failed: 1, runs: 3 } }
     overflow.finding = {
       ...overflow.finding,
       title: 'Row | spills',
-      oracle: { type: 'overflow', evidence: 'see https://evil.example/x' },
+      oracle: { type: 'layout', evidence: 'see https://evil.example/x' },
     }
     const security = { ...verifiedFinding('security', 'assert-failed', '3'), replay: { failed: 2, runs: 3 } }
     const report = render({ ...emptyVerified, flaky: [overflow, security] })
     expect(report).toContain('### Flaky (2), never filed')
-    expect(report).toContain('- c8-phone/2: Row \\| spills — overflow: "see [link removed]" (failed 1/3 replays)')
+    expect(report).toContain('- c8-phone/2: Row \\| spills — layout: "see [link removed]" (failed 1/3 replays)')
     expect(report).toContain('- c8-phone/3: security finding, text withheld (failed 2/3 replays)')
   })
 
@@ -586,6 +599,35 @@ describe('checkCoverage', () => {
   })
 })
 
+describe('probeGaps', () => {
+  const callsOf = (steps: readonly (readonly [string, string])[]): TranscriptMessage[] =>
+    steps.flatMap(([name, result], i) => [
+      { message: { content: [{ type: 'tool_use' as const, id: `t${i}`, name }] } },
+      { message: { content: [{ type: 'tool_result' as const, tool_use_id: `t${i}`, content: result }] } },
+    ])
+  const ready = '### New console messages\n- [ERROR] [qa-layout] ready @ http://localhost:1424/'
+
+  it('counts page loads without the probe, for navigate and navigate_back on either device', () => {
+    const steps = [
+      ['mcp__playwright__browser_navigate', ready],
+      ['mcp__playwright__browser_navigate', 'no probe here'],
+      ['mcp__playwright__browser_navigate_back', 'no probe here either'],
+      ['mcp__playwright_b__browser_navigate', 'device B, no probe'],
+      ['mcp__playwright_b__browser_navigate_back', ready],
+    ] as const
+    expect(probeGaps(callsOf(steps))).toEqual({ loads: 5, missing: 3 })
+  })
+
+  it('ignores results of other tools, even when they quote the ready line', () => {
+    const steps = [
+      ['mcp__playwright__browser_click', ready],
+      ['mcp__playwright__browser_navigate', ready],
+      ['Write', 'ok'],
+    ] as const
+    expect(probeGaps(callsOf(steps))).toEqual({ loads: 1, missing: 0 })
+  })
+})
+
 describe('runSummary', () => {
   it('reads attempt records and the transcript of each session against functions.json', async () => {
     const qaDir = join(dir, 'qa')
@@ -639,9 +681,31 @@ describe('runSummary', () => {
         status: 'passed',
       }),
     )
+    // A session with no function list still has its page loads checked; a fix session's transcript is never read.
+    const navigation = (name: string, result: string) => [
+      { type: 'assistant', message: { content: [{ type: 'tool_use', id: name, name, input: {} }] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: name, content: result }] } },
+    ]
+    const unlisted = 'c9-unlisted-phone'
+    await mkdir(join(outDir, unlisted))
+    await writeFile(join(outDir, unlisted, 'session.json'), JSON.stringify(session({ charter: unlisted })))
+    await writeFile(
+      join(outDir, unlisted, 'transcript.json'),
+      JSON.stringify([
+        ...navigation('mcp__playwright__browser_navigate', 'no probe'),
+        ...navigation('mcp__playwright__browser_navigate_back', '[qa-layout] ready'),
+      ]),
+    )
+    await writeFile(
+      join(outDir, 'fix-ab12cd34/transcript.json'),
+      JSON.stringify(navigation('mcp__playwright__browser_navigate', 'no probe')),
+    )
     const stepSummary = join(dir, 'step-summary.md')
 
     const { report } = await runSummary(outDir, qaDir, stepSummary)
+
+    expect(report).toContain('- **c9-unlisted-phone**: layout probe missing on 1 of 2 page loads')
+    expect(report).not.toContain('fix-ab12cd34**: layout probe')
 
     expect(report).toContain('- **c4-skills-projects-phone**: 1/1 covered; invalid records: 2\n')
     expect(report).not.toContain('fix-ab12cd34**:')

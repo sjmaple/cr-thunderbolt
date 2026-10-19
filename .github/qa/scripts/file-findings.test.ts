@@ -208,9 +208,9 @@ describe('dedupe', () => {
 describe('cap and roll-up', () => {
   test('files the 8 most severe, rolls the rest into one ticket', async () => {
     await writeVerified([
-      ...numbered(9, { area: 'layout', oracle: { type: 'overflow', evidence: 'wide' } }).map((f, i) => ({
+      ...numbered(9, { area: 'layout', oracle: { type: 'layout', evidence: 'wide' } }).map((f, i) => ({
         ...f,
-        oracle: { type: 'overflow', evidence: `wide ${'y'.repeat(i + 1)}` },
+        oracle: { type: 'layout', evidence: `wide ${'y'.repeat(i + 1)}` },
       })),
       { title: 'Urgent one' },
     ])

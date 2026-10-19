@@ -257,7 +257,7 @@ describe('severity', () => {
     ['models', 'page-error', 'High'],
     ['skills', 'page-error', 'Medium'],
     ['data', 'assert-failed', 'Medium'],
-    ['chat', 'overflow', 'Low'],
+    ['chat', 'layout', 'High'],
     ['auth', 'console-error', 'Low'],
     ['i18n', 'assert-failed', 'Low'],
     ['chat', 'ai-reported-failure', 'High'],
@@ -265,6 +265,38 @@ describe('severity', () => {
     ['layout', 'ai-reported-failure', 'Low'],
   ] as const)('%s + %s is %s', (area, type, expected) => {
     expect(severity({ ...finding, area, oracle: { type, evidence: 'quoted' } })).toBe(expected)
+  })
+})
+
+describe('layout oracle', () => {
+  const layoutFinding = (area: Finding['area'], evidence: string): Finding => ({
+    ...finding,
+    area,
+    oracle: { type: 'layout', evidence },
+  })
+
+  test('an overflow is Low, a covered control takes its area severity', () => {
+    expect(severity(layoutFinding('onboarding', '[qa-layout] overflow-text span "Long name"'))).toBe('Low')
+    expect(severity(layoutFinding('onboarding', '[qa-layout] overflow-page body ""'))).toBe('Low')
+    expect(severity(layoutFinding('onboarding', '[qa-layout] covered button "Continue"'))).toBe('High')
+    expect(severity(layoutFinding('skills', '[qa-layout] offscreen button "Save"'))).toBe('Medium')
+  })
+
+  test('overflow is no longer an oracle', () => {
+    expect(hasOracle(variant({ oracle: { type: 'overflow', evidence: 'x' } }))).toBe(false)
+    expect(hasOracle(variant({ oracle: { type: 'layout', evidence: '[qa-layout] covered button "Go"' } }))).toBe(true)
+  })
+
+  test('a repro spec may import the layout helper', () => {
+    const body = `
+  await loginViaEmailCode(page)
+  expect(await layoutProblems(page)).toEqual([])`
+    const withHelper = spec(body).replace(
+      '\n\ntest(',
+      "\nimport { layoutProblems } from '../../../.github/qa/layout'\n\ntest(",
+    )
+    expect(withHelper).toContain('.github/qa/layout')
+    expect(lintReproSpec(withHelper)).toEqual([])
   })
 })
 

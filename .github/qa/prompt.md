@@ -15,8 +15,8 @@ new user, record each attempt as you go, and prove every bug you find with quote
 - The app runs at http://localhost:1424 unless your charter says otherwise; its backend is http://localhost:8005.
 - Your platform and its screen size are in the "Your run" block at the end of this prompt: test the app as it looks
   there, and set that platform as a finding's `viewport`.
-- Use `browser_evaluate` only to read the page (for example to measure overflow), never to change it. Never pass a
-  `filename` to a browser tool.
+- Use `browser_evaluate` only to read the page (for example to read a value), never to change it. Never pass a `filename` to a
+  browser tool.
 - Type at most 2,000 characters at a time, even for a "very long" text: a longer one only burns your budget.
 
 ## Signing in
@@ -95,8 +95,8 @@ with Write to `<output directory>/attempts/<n>.json`. One file per attempt, neve
 ```
 
 - `observed` is an exact quote of at least 10 characters, copied from what a browser tool returned after your action:
-  a snapshot line, a console message, a request line, the overflow result. Code checks every quote against the
-  session's tool results, so never paraphrase, and never quote the code a tool echoes back (it repeats your input).
+  a snapshot line, a console message (a `[qa-layout]` line included), a request line. Code checks every quote
+  against the session's tool results, so never paraphrase, and never quote the code a tool echoes back (it repeats your input).
 - For a function marked "(after a reload)", the quote comes from after the reload, so write the record only then.
 - `status` is `passed` (the outcome showed), `failed` (it did not; also write a finding when an oracle below applies),
   `blocked` (the app did not let you; quote what stopped you) or `unattempted` (say why in `observed`).
@@ -113,30 +113,16 @@ status, or the text on screen):
 - `http-5xx`: a localhost response with status 500 or higher, or a failed request to localhost. A 4xx is not an oracle.
 - `lost-on-reload`: something you saved is gone or different after a reload.
 - `stuck`: a spinner or a disabled control for more than 30 s with no network activity.
-- `overflow`: at a width of 430 px or less, something does not fit. Measure it on every screen with this
-  `browser_evaluate` function, on its own, and read the result before your next action: `page: true` or any listed
-  text is a finding (text shortened with an ellipsis is fine and is not listed). A dialog taller than the screen
-  that cannot scroll is one too.
-
-  ```
-  () => ({
-    page: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-    text: [...document.querySelectorAll('body *')]
-      .filter((e) => {
-        const style = getComputedStyle(e)
-        return (
-          e.childElementCount === 0 &&
-          e.clientWidth > 1 &&
-          e.textContent.trim() !== '' &&
-          e.scrollWidth > e.clientWidth + 1 &&
-          style.textOverflow !== 'ellipsis' &&
-          !/auto|scroll/.test(style.overflowX)
-        )
-      })
-      .slice(0, 10)
-      .map((e) => e.textContent.trim().slice(0, 50)),
-  })
-  ```
+- `layout`: the page checks its own layout in every screen and reports a problem in a console error that starts with
+  `[qa-layout]`, once per problem and page load: `[qa-layout] <kind> <role> "<name>"`. The kind is `overflow-page`
+  (the page scrolls sideways), `overflow-text` (text wider than its box and not shortened with an ellipsis),
+  `offscreen` (a control you cannot scroll into view), `covered` (something sits over a control's center) or
+  `behind-keyboard` (the on-screen keyboard hides the focused field or a button of the dialog). It reports a problem
+  only after it held for half a second, and it skips controls behind an open dialog, toasts and popovers. Read the
+  console messages a tool returns after each action. When none shows, call `browser_console_messages` once on every
+  new screen, because a message appears only after the page settled. A `[qa-layout]` line other than
+  `[qa-layout] ready` is a `layout` finding with that exact line as its evidence, never a `console-error` one,
+  even though it shows in the console. Do not measure the layout yourself.
 
 - `assert-failed`: the screen contradicts what you just did (a renamed item still shows its old name), or the AI
   gives a wrong or invented answer about a fixture.
@@ -173,7 +159,8 @@ append; number findings 1, 2, 3…
 
 2. `<output directory>/repro/<n>.spec.ts`: a Playwright test that FAILS while the bug exists and PASSES once it is
    fixed, because it asserts the expected behaviour. A spec that breaks any rule below is thrown away:
-   - Import only from `@playwright/test` and from exactly `'../../../e2e/helpers'`.
+   - Import only from `@playwright/test`, from exactly `'../../../e2e/helpers'` and, for a `layout` finding,
+     from exactly `'../../../.github/qa/layout'`.
    - Helpers: `loginViaEmailCode(page)` signs in a fresh user and waits for the chat composer (it returns the email);
      `sendChatPrompt(page, text)` sends a chat message; `collectPageErrors(page)` returns an array that fills with
      uncaught errors; `openSidebarOnMobile(page)` opens the sidebar on a phone. The base URL is set, so use relative
@@ -182,6 +169,10 @@ append; number findings 1, 2, 3…
      `await page.getByTestId('model-selector-trigger').click()`, then
      `await page.getByRole('button', { name: 'Opus 5.5', exact: true }).click()` (or the other model's name).
      Otherwise no reply ever comes.
+   - A `layout` spec reaches the screen, repeats the action and asserts
+     `expect(await layoutProblems(page)).toEqual([])`, where `layoutProblems` comes from
+     `'../../../.github/qa/layout'`. It returns the problems the page shows by then, each `{ kind, target }`. Set a
+     phone's viewport first, as below.
    - An `ai-reported-failure` spec sends the same prompt and waits for the reply to finish: the "Stop generating"
      button shows, then is hidden (allow 120 s, and call `test.setTimeout(180_000)`). Then it asserts what a working
      feature shows (a role, label or text of the widget or tool result) and that no text matches a case-insensitive

@@ -10,7 +10,9 @@ get a ticket for it.
 
 - It is a real defect in the app: a user-visible failure (wrong or missing content, a broken action, lost data,
   a form that won't save although every visible field is filled, a layout that hides or clips content) or an error the app itself
-  raises (uncaught page error, console error, HTTP 5xx from the app's backend).
+  raises (uncaught page error, console error, HTTP 5xx from the app's backend). A `layout` finding quotes a
+  `[qa-layout]` line from the page's own probe: keep it when the replay failure lists that problem and a person
+  would see it, such as a button under a banner or text spilling out of its box.
 - The oracle evidence and the spec support the reported actual behaviour, and the replay failure shows that
   behaviour, not a problem with the spec (a wrong selector, a too-short timeout, a wrong assumption about the
   UI's copy or flow).

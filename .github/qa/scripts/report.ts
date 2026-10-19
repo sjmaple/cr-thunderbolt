@@ -164,6 +164,7 @@ const toSteps = (transcript: TranscriptMessage[]): Step[] => {
 
 /** `click` for `mcp__playwright__browser_click` (and device B's `mcp__playwright_b__…`); undefined for other tools. */
 const browserTool = (tool: string) => /^mcp__playwright(?:_b)?__browser_(\w+)$/.exec(tool)?.[1]
+const readyLine = '[qa-layout] ready'
 const readOnlyTools = new Set([
   'snapshot',
   'console_messages',
@@ -177,6 +178,16 @@ const readOnlyTools = new Set([
 const isAction = (step: Step) => {
   const tool = step.kind === 'call' ? browserTool(step.tool) : undefined
   return tool !== undefined && !readOnlyTools.has(tool)
+}
+/**
+ * Page loads in a session and how many of them did not show `[qa-layout] ready` in their result: a navigate result
+ * lists the console messages of the load, so the probe's ready line is there when the probe ran.
+ */
+export const probeGaps = (transcript: TranscriptMessage[]): { loads: number; missing: number } => {
+  const loads = toSteps(transcript).flatMap((step) =>
+    step.kind === 'result' && ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '') ? [step.text] : [],
+  )
+  return { loads: loads.length, missing: loads.filter((text) => !text.includes(readyLine)).length }
 }
 const isNavigation = (step: Step) =>
   step.kind === 'call' && ['navigate', 'navigate_back'].includes(browserTool(step.tool) ?? '')
@@ -290,6 +301,8 @@ type ReportInput = {
   filed?: Filed[]
   scorecard?: Scorecard
   canary?: CanaryResult
+  /** Sessions with page loads that lacked the layout probe, by session id. */
+  probe?: Map<string, ReturnType<typeof probeGaps>>
 }
 
 const stopLabel = {
@@ -307,6 +320,19 @@ const tokens = (s: Session) =>
 const escapeCell = (text: string) => text.replaceAll('|', '\\|').replaceAll('\n', ' ')
 /** Model-written text for the public job summary: one line, no foreign links or images, capped. */
 const safe = (text: string, max: number) => sanitize(escapeCell(text), max)
+
+/** Sessions whose pages loaded without the layout probe, so a clean layout there proves nothing. */
+const probeSection = (probe: ReportInput['probe'] = new Map()) =>
+  probe.size === 0
+    ? []
+    : [
+        '',
+        '## Layout probe',
+        ...[...probe].map(
+          ([charter, { loads, missing }]) =>
+            `- **${charter}**: layout probe missing on ${missing} of ${loads} page loads`,
+        ),
+      ]
 
 /** Free sessions record their metrics as `free-<case>-<platform>`: they play a case and have no function list. */
 const isFree = (charter: string) => charter.startsWith('free-')
@@ -523,6 +549,7 @@ export const renderReport = (input: ReportInput) => {
     'A function counts only when a passed or failed attempt quotes a browser tool result seen after its action, ' +
       'and after a reload where the function needs one.',
     ...chartered.map((s) => coverageLine(s.charter, coverage.get(s.charter))),
+    ...probeSection(input.probe),
     ...findingsSection(
       findingsOf(input, (charterDir) => !isFree(charterDir)),
       '',
@@ -591,6 +618,7 @@ export const runSummary = async (
   const lists: Record<string, QaFunction[]> = await Bun.file(join(qaDir, 'functions.json')).json()
   const functions = new Map(Object.entries(lists))
   const coverage = new Map<string, Coverage>()
+  const probe = new Map<string, ReturnType<typeof probeGaps>>()
   for (const s of sessions) {
     const dir = join(outDir, s.charter)
     const attempts = await loadAttempts(dir)
@@ -601,11 +629,13 @@ export const runSummary = async (
       : isFix(s)
         ? undefined
         : functions.get(parseSession(s.charter).charter)
-    if (list) {
-      // A save step cut short can leave a broken file: that session has no transcript.
-      const transcript = await readJson<TranscriptMessage[]>(join(dir, 'transcript.json')).catch(() => undefined)
-      coverage.set(s.charter, checkCoverage(list, attempts, transcript))
-    }
+    // A save step cut short can leave a broken file: that session has no transcript.
+    const transcript = isFix(s)
+      ? undefined
+      : await readJson<TranscriptMessage[]>(join(dir, 'transcript.json')).catch(() => undefined)
+    const gaps = transcript && probeGaps(transcript)
+    if (gaps && gaps.missing > 0) probe.set(s.charter, gaps)
+    if (list) coverage.set(s.charter, checkCoverage(list, attempts, transcript))
   }
   const { valid, rejected } = await loadFindings(outDir)
   const report = renderReport({
@@ -616,6 +646,7 @@ export const runSummary = async (
     filed: await readJson<Filed[]>(join(outDir, 'filed.json')),
     scorecard: await readJson<Scorecard>(join(outDir, 'scorecard.json')),
     canary: await readJson<CanaryResult>(join(outDir, 'canary.json')),
+    probe,
   })
   await writeFile(join(outDir, 'report.md'), report)
   if (stepSummary) await appendFile(stepSummary, report)

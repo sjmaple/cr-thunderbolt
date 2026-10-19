@@ -63,7 +63,12 @@ code from. The fallback is a checkout the job's user cannot write during replay.
    per free-session platform (`free-<case>-<platform>`); `legs.ts` plans them. A canary adds its session's leg on the
    canary build. Each runs with `claude-code-action`, the Playwright MCP (`mcp.json`, plus `mcp-two-devices.json` for c7's second browser) and the
    prompt `explore.sh prompt` builds. Attempts, findings and repro specs are written as they happen, so a cut session
-   keeps its work.
+   keeps its work. `mcp.json` loads `layout-probe.js` into every page (`--init-script`, a path relative to the repo
+   root, where the session runs). The probe writes `[qa-layout] ready` once per page load and a `[qa-layout] <kind>
+<target>` line per layout problem, all with `console.error`, so they pass the MCP's `--console-level error`. A
+   problem line is a `layout` finding. `report.ts` lists each session with page loads that lack the ready line under
+   "Layout probe", because a clean layout there proves nothing. `noise.txt` keeps the ready line out of
+   `console-error` findings.
 3. **replay** (`verify.ts replay`): schema, oracle (`noise.txt`) and lint gates, then each spec 3 times. 3 of 3
    failures confirm a finding, 2 of 3 for the real-AI charters (`realAiCharters` in `findings.ts`); 1 or 2 are flaky
    (report only), 0 is dropped. c7 replays on Postgres + PowerSync, the real-AI charters against the real providers,
@@ -207,7 +212,8 @@ Serve `qa-dist-canary`, run each canary's charter into `qa-out-canary` and repla
 Collect the patch like the workflow does, then `bun .github/qa/scripts/fix.ts publish --out qa-out --fp <fp>` without `--live` shows the
 commit and the PR it would open.
 
-Every out dir must sit directly under the repo root: the specs import `../../../e2e/helpers`.
+Every out dir must sit directly under the repo root: the specs import `../../../e2e/helpers` and
+`../../../.github/qa/layout`.
 
 The scripts' tests and type check: `bun run test:qa` and `bunx tsc -p .github/qa`. The layout probe
 (`layout-probe.js`) has its own tests on static pages in `fixtures/layout/`:
@@ -352,8 +358,8 @@ The fix agent's draft PR already does this. By hand:
 
 1. Take `qa-out/<charter>/repro/<n>.spec.ts` from the run's `qa-replay-weekly` artifact.
 2. Save it as `e2e/consumer-qa-<fp>.spec.ts` (`e2e/sync-qa-<fp>.spec.ts` for c7).
-3. Change `'../../../e2e/helpers'` to `'./helpers'`, and `@playwright/test` to `./test` when it imports only
-   `test`, `expect`, `Page`, `Request` or `Route`.
+3. Change `'../../../e2e/helpers'` to `'./helpers'`, `'../../../.github/qa/layout'` to `'../.github/qa/layout'`,
+   and `@playwright/test` to `./test` when it imports only `test`, `expect`, `Page`, `Request` or `Route`.
 4. `bun run e2e:check-collected`, then check that the spec fails before the fix and passes after it.
 
 A c1 spec runs against the onboarding build on port 1425, which the root `playwright.config.ts` does not start. It

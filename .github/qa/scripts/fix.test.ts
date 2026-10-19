@@ -321,6 +321,13 @@ describe('regressionSpec', () => {
     expect(source.split('\n').slice(2)).toEqual(spec.split('\n').slice(2))
   })
 
+  test('moves the layout helper import from qa-out/ to e2e/', () => {
+    const source = `import { layoutProblems } from '../../../.github/qa/layout'\n`
+    expect(regressionSpec('c8-phone', 'ab12cd34', source).source).toBe(
+      `import { layoutProblems } from '../.github/qa/layout'\n`,
+    )
+  })
+
   test('uses the sync prefix for the two-device charter', () => {
     expect(regressionSpec('c7-two-devices', 'ab12cd34', spec).path).toBe('e2e/sync-qa-ab12cd34.spec.ts')
   })

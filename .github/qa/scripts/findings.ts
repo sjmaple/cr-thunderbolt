@@ -32,7 +32,7 @@ const oracleTypes = [
   'http-5xx',
   'lost-on-reload',
   'stuck',
-  'overflow',
+  'layout',
   'assert-failed',
   'ai-reported-failure',
 ] as const
@@ -124,9 +124,9 @@ export const hasOracle = (finding: RawFinding): finding is Finding => findingSch
 
 /**
  * Import specifiers a repro spec may use. Assumes specs are replayed where the explorer wrote them,
- * `qa-out/<charter>/repro/<n>.spec.ts`, so the repo's `e2e/helpers` is three directories up.
+ * `qa-out/<charter>/repro/<n>.spec.ts`, so the repo's `e2e/helpers` and `.github/qa/layout` are three directories up.
  */
-const allowedImports = new Set(['@playwright/test', '../../../e2e/helpers'])
+const allowedImports = new Set(['@playwright/test', '../../../e2e/helpers', '../../../.github/qa/layout'])
 
 /** Rejected wherever they appear, as a variable, a property, or a literal key, so shadowing cannot hide them. */
 const forbiddenNames = new Set([
@@ -381,8 +381,8 @@ const areaSeverity = {
  * reaches this table: the guard's smoke spec aborts the run first.
  */
 export const severity = (finding: Finding): Severity => {
-  const { type } = finding.oracle
-  if (type === 'overflow' || type === 'console-error') return 'Low'
+  const { type, evidence } = finding.oracle
+  if (type === 'console-error' || (type === 'layout' && /^\[qa-layout\] overflow-/.test(evidence))) return 'Low'
   if (type === 'lost-on-reload' || (type === 'page-error' && finding.area === 'chat')) return 'Urgent'
   // Everything else, an AI reporting that a feature failed included, is a broken feature: its area decides.
   return areaSeverity[finding.area]

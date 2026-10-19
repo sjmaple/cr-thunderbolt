@@ -8,3 +8,6 @@ __TAURI__
 tauri
 window.__TAURI_INTERNALS__
 convertFileSrc
+
+# The layout probe announces itself with console.error, because the MCP drops quieter levels. It is not an error.
+[qa-layout] ready

@@ -14,6 +14,8 @@
         "${QA_MCP_VIEWPORT:-1280x800}",
         "--console-level",
         "error",
+        "--init-script",
+        ".github/qa/layout-probe.js",
         "--image-responses",
         "omit",
         "--snapshot-mode",
