@@ -128,7 +128,7 @@ Lets users sign in with a passkey, and unlock sync on a new device with it inste
 > The Relying Party ID is permanent once users register passkeys. Changing it — including by moving `APP_URL` to a new domain while `PASSKEY_RP_ID` is unset — orphans every passkey: users can no longer sign in with them or use them to unlock sync.
 
 > [!NOTE]
-> The official macOS, iOS and Android apps can only use passkeys for `app.thunderbolt.io`, the domain their signature is associated with. Against any other Relying Party ID they hide the passkey options, so passkeys on a self-hosted deployment work in the browser only.
+> The official macOS, iOS and Android apps can only use passkeys for `app.thunderbolt.io`, the domain their signature is associated with. The Windows app follows the same rule. Against any other Relying Party ID they hide the passkey options, so passkeys on a self-hosted deployment work in the browser only.
 
 ## Models and inference
 
