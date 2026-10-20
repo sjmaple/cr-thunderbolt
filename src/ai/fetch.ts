@@ -262,7 +262,7 @@ export type OpenAiCompatConnection = {
  * @returns the connection, or `null` when unsupported/unconfigured
  */
 export const resolveOpenAiCompatConnection = (
-  modelConfig: Model,
+  modelConfig: Pick<Model, 'provider' | 'apiKey' | 'url'>,
   getProxyFetch: () => FetchFn,
   backendFetch: FetchFn = fetch,
 ): OpenAiCompatConnection | null => {

@@ -109,7 +109,10 @@ const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: R
     method,
     headers: proxyHeaders,
     body: body as BodyInit | null,
-    credentials: init?.credentials ?? (input instanceof Request ? input.credentials : 'include'),
+    // Not inherited from a `Request` input: its browser default ('same-origin') was
+    // chosen for the upstream, and this hop goes to our backend, where cookie-only
+    // SSO needs the session cookie even when the backend is cross-origin.
+    credentials: init?.credentials ?? 'include',
     signal: init?.signal,
     // @ts-expect-error -- Bun/Tauri/modern browsers support duplex:'half' for streaming uploads
     duplex: 'half',

@@ -4,10 +4,11 @@
 
 import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
+import { resolveOpenAiCompatConnection } from '@/ai/fetch'
 import { getTinfoilClient } from '@/ai/tinfoil-client'
 import { fetch } from '@/lib/fetch'
 import { http } from '@/lib/http'
-import { normalizeOpenAiBaseUrl } from '@/lib/openai-base-url'
+import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
 import { defaultModels } from '@shared/defaults/models'
 import { catalogRequiresApiKey } from './model-policy'
@@ -96,23 +97,11 @@ export const canFetchCatalog = ({ provider, apiKey, url }: CatalogRequest): bool
 export const catalogRequestKey = ({ provider, apiKey, url }: CatalogRequest): string =>
   JSON.stringify([provider, apiKey ?? '', url ?? ''])
 
-/** The OpenAI-compatible models endpoint for a provider, or undefined when its
- *  prerequisite (API key, base URL) is missing so no request should be made. */
-const resolveCatalogEndpoint = ({ provider, apiKey, url }: CatalogRequest): string | undefined => {
-  if (provider === 'openai') {
-    return apiKey ? 'https://api.openai.com/v1/models' : undefined
-  }
-  if (provider === 'openrouter') {
-    return apiKey ? 'https://openrouter.ai/api/v1/models' : undefined
-  }
-  if (provider === 'custom' && url) {
-    return `${normalizeOpenAiBaseUrl(url)}/models`
-  }
-  return undefined
-}
-
 /** Fetches a provider catalog only when explicitly requested by the caller. */
-export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogRequest): Promise<AvailableModel[]> => {
+export const fetchModelsForProvider = async (
+  { provider, apiKey, url }: CatalogRequest,
+  getProxyFetch: () => FetchFn,
+): Promise<AvailableModel[]> => {
   if (provider === 'thunderbolt') {
     return thunderboltModelCatalog
   }
@@ -130,13 +119,21 @@ export const fetchModelsForProvider = async ({ provider, apiKey, url }: CatalogR
       .sort((left, right) => left.id.localeCompare(right.id))
   }
 
-  const endpoint = resolveCatalogEndpoint({ provider, apiKey, url })
-  if (!endpoint) {
+  // Chat's connection, transport included: many OpenAI-compatible hosts never answer
+  // a browser preflight, so only the proxy can reach them (THU-1109).
+  const connection = resolveOpenAiCompatConnection(
+    { provider, apiKey: apiKey ?? null, url: url ?? null },
+    getProxyFetch,
+  )
+  if (!connection) {
     return []
   }
 
   const response = await http
-    .get(endpoint, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, fetch })
+    .get(`${connection.baseURL}/models`, {
+      headers: connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {},
+      fetch: connection.fetch,
+    })
     .json<{ data: ModalityCatalogRow[] }>()
   return response.data
     .map((model) => ({

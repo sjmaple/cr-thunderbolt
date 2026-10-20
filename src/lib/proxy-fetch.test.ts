@@ -66,6 +66,27 @@ describe('createProxyFetch — Hosted mode', () => {
     const res = await proxyFetch('https://example.com/api', { method: 'GET' })
     expect(res.headers.get('content-type')).toBe('application/json')
   })
+
+  it('sends backend credentials even when the caller passes a same-origin Request', async () => {
+    const outer: Request[] = []
+    const fetchImpl: typeof fetch = Object.assign(
+      async (input: RequestInfo | URL) => {
+        outer.push(new Request(input))
+        return new Response('ok')
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'https://api.thunderbolt.example/v1',
+      fetchImpl,
+      isStandalone: () => false,
+    })
+
+    // `same-origin` is the browser's default for `new Request(...)`, which is what `http` hands over.
+    await proxyFetch(new Request('https://example.com/models', { credentials: 'same-origin' }))
+
+    expect(outer[0].credentials).toBe('include')
+  })
 })
 
 describe('createProxyFetch — app-version gate', () => {

@@ -2,15 +2,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
 import { defaultModels } from '@shared/defaults/models'
 import {
   canFetchCatalog,
   catalogRequestKey,
   isFetchableCatalogUrl,
   catalogRowSupportsImages,
+  fetchModelsForProvider,
   thunderboltModelCatalog,
+  type CatalogRequest,
 } from './model-catalog'
+
+const catalogResponse = () => Response.json({ data: [] })
+
+const stubProxyFetch = () =>
+  Object.assign(
+    mock(async (_request: RequestInfo | URL) => catalogResponse()),
+    { preconnect: async () => false },
+  )
 
 describe('model catalog policy', () => {
   it('derives Thunderbolt choices from shipped defaults', () => {
@@ -72,6 +82,37 @@ describe('model catalog policy', () => {
     it('leaves support unknown when the catalog lists no modalities', () => {
       expect(catalogRowSupportsImages({ id: 'c' })).toBeUndefined()
       expect(catalogRowSupportsImages({ id: 'd', architecture: {} })).toBeUndefined()
+    })
+  })
+
+  describe('fetchModelsForProvider', () => {
+    it.each<[CatalogRequest, string]>([
+      [
+        { provider: 'custom', url: 'https://api.otari.ai/api/v1', apiKey: 'sk-test' },
+        'https://api.otari.ai/api/v1/models',
+      ],
+      [{ provider: 'openai', apiKey: 'sk-test' }, 'https://api.openai.com/v1/models'],
+      [{ provider: 'openrouter', apiKey: 'sk-test' }, 'https://openrouter.ai/api/v1/models'],
+    ])('routes the %o catalog through the universal proxy', async (request, endpoint) => {
+      const proxyFetch = stubProxyFetch()
+      await fetchModelsForProvider(request, () => proxyFetch)
+
+      const sent = new Request(proxyFetch.mock.calls[0][0])
+      expect(sent.url).toBe(endpoint)
+      expect(sent.headers.get('Authorization')).toBe('Bearer sk-test')
+    })
+
+    it('keeps loopback custom endpoints off the proxy, like chat does', async () => {
+      const proxyFetch = stubProxyFetch()
+      const directFetch = spyOn(globalThis, 'fetch').mockResolvedValue(catalogResponse())
+      try {
+        await fetchModelsForProvider({ provider: 'custom', url: 'http://localhost:1234' }, () => proxyFetch)
+
+        expect(new Request(directFetch.mock.calls[0][0]).url).toBe('http://localhost:1234/v1/models')
+        expect(proxyFetch).not.toHaveBeenCalled()
+      } finally {
+        directFetch.mockRestore()
+      }
     })
   })
 })
