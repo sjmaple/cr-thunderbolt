@@ -555,9 +555,21 @@ msgstr "ブリッジのターゲット"
 msgid "Browser"
 msgstr "ブラウザー"
 
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "Build a Mini App with the assistant"
+msgstr ""
+
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "Build an app"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Build it from source instead (requires Bun):"
 msgstr "代わりにソースからビルドする（Bun が必要）:"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Building {buildingAppName}"
+msgstr ""
 
 #: src/settings/models/model-detail.tsx
 msgid "Built-in models can't be edited or removed"
@@ -2467,6 +2479,10 @@ msgstr "ネットワークリクエストに失敗しました（ブラウザー
 msgid "New Agent"
 msgstr "新しいエージェント"
 
+#: src/layout/sidebar/chat-sidebar.tsx
+#~ msgid "New app"
+#~ msgstr ""
+
 #: src/mini-apps/mini-app-chat-history.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
@@ -4269,6 +4285,10 @@ msgstr "ピン留めを解除"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"
 msgstr "{relative}に到達不能"
+
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "Untitled app"
+msgstr ""
 
 #: src/lib/title-generator.ts
 #: src/mini-apps/mini-app-chat-history.tsx

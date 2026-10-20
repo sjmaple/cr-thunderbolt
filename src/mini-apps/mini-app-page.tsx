@@ -345,6 +345,14 @@ const MiniAppPage = () => {
     )
   }
 
+  // Found is found, whatever the deployment registry did: a local app comes off
+  // disk and must not be hidden behind a backend that happens to be unreachable.
+  if (app) {
+    // Keyed so navigating between two apps fully remounts the bridge rather than
+    // pointing the existing frame at a new origin.
+    return <MiniAppView key={app.id} app={app} />
+  }
+
   // The registry arrives over the network, so "no such app" isn't knowable until
   // it lands. Redirecting early would bounce a perfectly valid deep link to
   // Not Found whenever someone opened one on a cold load.
@@ -365,13 +373,7 @@ const MiniAppPage = () => {
     )
   }
 
-  if (!app) {
-    return <Navigate to="/not-found" replace />
-  }
-
-  // Keyed so navigating between two apps fully remounts the bridge rather than
-  // pointing the existing frame at a new origin.
-  return <MiniAppView key={app.id} app={app} />
+  return <Navigate to="/not-found" replace />
 }
 
 export default MiniAppPage

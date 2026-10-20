@@ -4,10 +4,13 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { findLocalMiniApp } from '@/mini-apps/local-mini-apps'
 
-export type ExecutionLocation = 'sandbox' | 'computer' | 'cloud'
+export type ExecutionLocation = 'sandbox' | 'computer' | 'app' | 'cloud'
 export type AgentExecution = { access: 'ask' | 'full' } & (
   | { location: 'computer'; cwd: string }
+  /** Building a local Mini App: native tools rooted at the app's own folder. */
+  | { location: 'app'; cwd: string; appId: string }
   | { location: 'sandbox' | 'cloud'; cwd?: string }
 )
 export const defaultAgentExecution: AgentExecution = { location: 'sandbox', access: 'ask' }
@@ -32,3 +35,17 @@ export const useAgentExecutionStore = create<ExecutionStore>()(
 /** Read the current thread's choice at send time, avoiding stale adapter closures. */
 export const getAgentExecution = (threadId: string): AgentExecution =>
   useAgentExecutionStore.getState().byThread[threadId] ?? defaultAgentExecution
+
+/**
+ * The execution a send should use: a chat attached to a local Mini App builds
+ * that app, keeping only the thread's access choice; anything else uses the
+ * thread's stored choice.
+ */
+export const resolveAgentExecution = (threadId: string, miniAppId: string | null): AgentExecution => {
+  const stored = getAgentExecution(threadId)
+  const local = miniAppId ? findLocalMiniApp(miniAppId) : undefined
+  if (!local) {
+    return stored
+  }
+  return { location: 'app', appId: local.id, cwd: local.localPath, access: stored.access }
+}

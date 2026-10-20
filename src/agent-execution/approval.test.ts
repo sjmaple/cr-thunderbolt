@@ -6,7 +6,7 @@ import { describe, expect, it, mock } from 'bun:test'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { tool } from 'ai'
 import { z } from 'zod'
-import { createToolAuthorizer, withToolApproval } from './approval'
+import { createToolAuthorizer, isPathInside, withToolApproval } from './approval'
 
 describe('built-in tool approval', () => {
   it('allows audited reads without prompting and asks before writes, shell and unknown tools', async () => {
@@ -82,5 +82,38 @@ describe('built-in tool approval', () => {
   it('fails closed when the approval bridge is absent', async () => {
     const authorize = createToolAuthorizer({ location: 'sandbox', access: 'ask' }, { threadId: 'chat' })
     await expect(authorize('write', {}, 'id')).rejects.toThrow('approval is unavailable')
+  })
+
+  it('build mode edits the app folder without asking, but still asks for shell and paths outside it', async () => {
+    const requestPermission = mock(
+      async (): Promise<RequestPermissionResponse> => ({ outcome: { outcome: 'selected', optionId: 'allow' } }),
+    )
+    const authorize = createToolAuthorizer(
+      { location: 'app', access: 'ask', cwd: '/data/mini-apps/todo', appId: 'todo' },
+      { threadId: 'chat', requestPermission },
+    )
+    await authorize('write', { path: 'index.html' }, 'w1')
+    await authorize('edit', { path: '/data/mini-apps/todo/app.js' }, 'e1')
+    await authorize('reload_app', {}, 'r1')
+    expect(requestPermission).not.toHaveBeenCalled()
+    await authorize('write', { path: '../other/index.html' }, 'w2')
+    await authorize('write', { path: '/etc/hosts' }, 'w3')
+    await authorize('bash', { command: 'ls' }, 'b1')
+    expect(requestPermission).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('isPathInside', () => {
+  it('accepts relative and rooted paths under the folder', () => {
+    expect(isPathInside('/apps/todo', 'index.html')).toBe(true)
+    expect(isPathInside('/apps/todo', 'css/site.css')).toBe(true)
+    expect(isPathInside('/apps/todo/', '/apps/todo/app.js')).toBe(true)
+  })
+
+  it('refuses climbing out, siblings sharing a prefix, and other absolute paths', () => {
+    expect(isPathInside('/apps/todo', '../x')).toBe(false)
+    expect(isPathInside('/apps/todo', 'a/../../x')).toBe(false)
+    expect(isPathInside('/apps/todo', '/apps/todo-evil/x')).toBe(false)
+    expect(isPathInside('/apps/todo', '/etc/hosts')).toBe(false)
   })
 })

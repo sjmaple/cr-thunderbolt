@@ -224,6 +224,7 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
       stopping,
       selectedAgent,
       selectedModel,
+      miniAppId,
     } = useCurrentChatSession()
     // Bound to a local so the catalog placeholder is named `{agentName}` — a
     // member expression inside a macro extracts as positional `{0}`.
@@ -708,7 +709,12 @@ export const ChatPromptInput = forwardRef<ChatPromptInputRef, ChatPromptInputPro
           onOpenConnections={() => navigate('/settings/connections')}
         />
         {isBuiltInAgent(selectedAgent) && (
-          <AgentExecutionControls key={chatThreadId} threadId={chatThreadId} disabled={isBusy || isConnecting} />
+          <AgentExecutionControls
+            key={chatThreadId}
+            threadId={chatThreadId}
+            miniAppId={miniAppId}
+            disabled={isBusy || isConnecting}
+          />
         )}
         {isConnecting ? (
           <div

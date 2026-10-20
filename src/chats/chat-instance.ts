@@ -53,7 +53,7 @@ import type { FetchFn } from '@/lib/proxy-fetch'
 import type { SaveMessagesFunction, ThunderboltUIMessage } from '@/types'
 import type { Agent } from '@/types/acp'
 import { Chat } from '@ai-sdk/react'
-import { getAgentExecution } from '@/agent-execution/store'
+import { resolveAgentExecution } from '@/agent-execution/store'
 import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk'
 import { DefaultChatTransport, type ChatInit } from 'ai'
 import { v7 as uuidv7 } from 'uuid'
@@ -497,7 +497,7 @@ export const createAgentRoutingFetch = (
         projectSection,
         onAcpSessionId: persistAcpSessionId,
         requestPermission,
-        execution: isBuiltInAgent(selectedAgent) ? getAgentExecution(id) : undefined,
+        execution: isBuiltInAgent(selectedAgent) ? resolveAgentExecution(id, session.miniAppId) : undefined,
         onSessionSideEffect: applySessionSideEffect,
       })
       return wrapResponseForFirstContent(response, telemetry)

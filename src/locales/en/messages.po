@@ -567,9 +567,21 @@ msgstr "Bridge target"
 msgid "Browser"
 msgstr "Browser"
 
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "Build a Mini App with the assistant"
+msgstr "Build a Mini App with the assistant"
+
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "Build an app"
+msgstr "Build an app"
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Build it from source instead (requires Bun):"
 msgstr "Build it from source instead (requires Bun):"
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Building {buildingAppName}"
+msgstr "Building {buildingAppName}"
 
 #: src/settings/models/model-detail.tsx
 msgid "Built-in models can't be edited or removed"
@@ -2479,6 +2491,10 @@ msgstr "Network request failed (the browser blocked the request or the server is
 msgid "New Agent"
 msgstr "New Agent"
 
+#: src/layout/sidebar/chat-sidebar.tsx
+#~ msgid "New app"
+#~ msgstr "New app"
+
 #: src/mini-apps/mini-app-chat-history.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
@@ -4281,6 +4297,10 @@ msgstr "Unpin"
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"
 msgstr "Unreachable {relative}"
+
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "Untitled app"
+msgstr "Untitled app"
 
 #: src/lib/title-generator.ts
 #: src/mini-apps/mini-app-chat-history.tsx

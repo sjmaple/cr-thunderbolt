@@ -69,6 +69,8 @@ import { i18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { defaultAgentExecution, type AgentExecution } from '@/agent-execution/store'
 import { createToolAuthorizer } from '@/agent-execution/approval'
+import { buildMiniAppBuildPrompt } from '@/mini-apps/build-prompt'
+import { isManifestPath, refreshLocalMiniApps } from '@/mini-apps/local-mini-apps'
 import type { PiModelDescriptor, SeedTurn } from '@shared/agent-core'
 import { buildClientIdentityBlock } from '@shared/agent-core/client-identity'
 import { appHarnessEnvironmentPrompt } from '@shared/agent-core/environment-prompt'
@@ -568,15 +570,30 @@ export const composeAppHarnessSystemPrompt = (
     appVersion: import.meta.env.VITE_APP_VERSION,
   })
   const executionPrompt =
-    execution.location === 'computer'
-      ? `You are running on the user's computer with real filesystem access and a native bash shell. Your working directory is ${JSON.stringify(execution.cwd)}. Files are visible to the user and persist after this chat. The working directory is not a sandbox boundary. Do not claim files live in a virtual workspace.`
-      : appHarnessEnvironmentPrompt
+    execution.location === 'app'
+      ? buildMiniAppBuildPrompt(execution.cwd)
+      : execution.location === 'computer'
+        ? `You are running on the user's computer with real filesystem access and a native bash shell. Your working directory is ${JSON.stringify(execution.cwd)}. Files are visible to the user and persist after this chat. The working directory is not a sandbox boundary. Do not claim files live in a virtual workspace.`
+        : appHarnessEnvironmentPrompt
   const accessPrompt =
     execution.access === 'ask'
       ? 'File changes, shell commands, and external actions require user approval. Reads run automatically. If denied, respect the decision; do not retry through another tool.'
       : 'The user enabled full access. Tools execute without an approval prompt.'
   const environmentBlock = config.supportsTools ? `\n\n${executionPrompt}\n${accessPrompt}` : ''
   return `${config.stableSystemPrompt}\n\n${clientIdentity}${environmentBlock}\n\n${config.volatileSystemPrompt}`
+}
+
+/** A renamed local app shows its new name in the sidebar as soon as the agent writes it. */
+const refreshAfterManifestEdit = async (execution: AgentExecution | undefined, name: string, input: unknown) => {
+  const path = (input as { path?: unknown } | null)?.path
+  if (
+    execution?.location === 'app' &&
+    (name === 'write' || name === 'edit') &&
+    typeof path === 'string' &&
+    isManifestPath(path)
+  ) {
+    await refreshLocalMiniApps()
+  }
 }
 
 /** Build a thread's harness from the lazily-loaded engine and bind it to the
@@ -594,7 +611,7 @@ const buildHarnessRecord = async (
 ): Promise<HarnessRecord> => {
   const execution = context.execution ?? defaultAgentExecution
   const native =
-    execution.location === 'computer'
+    execution.location === 'computer' || execution.location === 'app'
       ? { env: new agentCore.NativeExecutionEnv(execution.cwd, invoke), cwd: execution.cwd }
       : undefined
   const systemPrompt = { current: composeAppHarnessSystemPrompt(config, execution) }
@@ -633,7 +650,9 @@ const prepareHarnessForSend = async (
     ...tool,
     execute: async (...args: Parameters<typeof tool.execute>) => {
       await authorize(tool.name, args[1], args[0], args[2])
-      return tool.execute(...args)
+      const result = await tool.execute(...args)
+      await refreshAfterManifestEdit(context.execution, tool.name, args[1])
+      return result
     },
   }))
   const activeToolNames = config.model.toolUsage === 0 ? [] : allTools.map((tool) => tool.name)
@@ -818,7 +837,7 @@ const fetchViaHarness = async (
   })
   const resolved = await resolvePiModel(agentCore, context, config.profile, tinfoilOptions)
   if (!resolved) {
-    if (context.execution?.location === 'computer') {
+    if (context.execution?.location === 'computer' || context.execution?.location === 'app') {
       throw new Error(i18n._(msg`This model cannot run on this computer. Choose a tool-capable supported model.`))
     }
     context.telemetry?.setDimensions({ engine: 'legacy' })
@@ -945,7 +964,7 @@ export const createBuiltInAdapter = (agent: Agent, options: BuiltInAdapterOption
     if (execution.location === 'cloud') {
       throw new Error(i18n._(msg`Cloud execution is not available yet`))
     }
-    if (execution.location === 'computer') {
+    if (execution.location === 'computer' || execution.location === 'app') {
       if (!isTauriDesktop()) {
         throw new Error(i18n._(msg`Computer execution requires the desktop app`))
       }

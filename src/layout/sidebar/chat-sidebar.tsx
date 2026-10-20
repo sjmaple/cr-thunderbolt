@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/sidebar'
 import type { DeleteAllChatsMutationType, DeleteChatMutationType } from '@/layout/sidebar/types'
 import { cn } from '@/lib/utils'
-import { CheckSquare, FolderOpen, MessageCirclePlus } from 'lucide-react'
+import { CheckSquare, FolderOpen, MessageCirclePlus, Plus } from 'lucide-react'
 import { type RefObject } from 'react'
 import { useLocation } from 'react-router'
 import {
@@ -33,8 +33,10 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { MessageCircle } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { useMiniApps } from '@/mini-apps/use-mini-apps'
+import { createLocalMiniApp } from '@/mini-apps/local-mini-apps'
+import { isTauriDesktop } from '@/lib/platform'
 import { miniAppPath } from '@/mini-apps/use-chat-destination'
 import { resolveChatDrop, type ChatDragData } from '@/projects/chat-drop'
 import { MoveChatToProjectDialog } from '@/projects/move-chat-to-project-dialog'
@@ -125,7 +127,38 @@ const MiniAppMenuItems = ({ pathname, onClick }: { pathname: string; onClick: (a
           </SidebarMenuButton>
         </SidebarMenuItem>
       ))}
+      {isTauriDesktop() && <NewMiniAppMenuItem onCreated={onClick} />}
     </>
+  )
+}
+
+/**
+ * Desktop only: a starter app on disk, opened straight away so the chat beside it
+ * can build it. The shell hands back an untouched starter if one exists, so
+ * repeated clicks don't stack empty apps in the list above.
+ */
+const NewMiniAppMenuItem = ({ onCreated }: { onCreated: (appId: string) => void }) => {
+  const { t } = useLingui()
+  const [pending, startTransition] = useTransition()
+  const create = () =>
+    startTransition(async () => {
+      const app = await createLocalMiniApp(t`Untitled app`)
+      onCreated(app.id)
+    })
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        onClick={create}
+        disabled={pending}
+        tooltip={t`Build a Mini App with the assistant`}
+        className="cursor-pointer text-muted-foreground"
+      >
+        <Plus className="size-[var(--icon-size-default)]" />
+        <span>
+          <Trans>Build an app</Trans>
+        </span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   )
 }
 

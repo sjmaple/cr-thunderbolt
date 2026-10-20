@@ -11,6 +11,7 @@ import { requestMiniAppApproval } from '@/mini-apps/mini-app-approval'
 import { chooseEmbeddedSurface, type EmbeddedSurfaceChoice } from '@/ai/embedded-surface'
 import { buildMiniAppContextNote, supersedeAppContextResults } from '@/mini-apps/mini-app-context-note'
 import { createMiniAppContextTool } from '@/mini-apps/mini-app-context-tool'
+import { createReloadAppTool } from '@/mini-apps/reload-app-tool'
 import { buildMiniAppPromptSection } from '@/mini-apps/mini-app-prompt'
 import { getMiniAppSnapshot, useMiniAppStore } from '@/mini-apps/mini-app-store'
 import { buildMiniAppToolsPromptSection, createMiniAppTools, toToolsetName } from '@/mini-apps/mini-app-tools'
@@ -612,6 +613,10 @@ export const prepareAiRequestConfig = async ({
       getSnapshot: getMiniAppSnapshot,
       requestContext: readMiniAppContext,
     })
+  }
+  // Building a local app: the agent needs to run what it just wrote.
+  if (supportsTools && miniApp?.localPath) {
+    appToolset.reload_app = createReloadAppTool()
   }
   // The view also goes into the volatile system prompt on every send, because a
   // tool is only as fresh as the model's decision to call it — see

@@ -22,9 +22,10 @@
  * Hence the deadline below.
  */
 
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useHttpClient } from '@/contexts'
 import type { HttpClient } from '@/lib/http'
+import { ensureLocalMiniAppsLoaded, useLocalMiniAppsStore } from './local-mini-apps'
 import { parseMiniAppRegistry, type MiniAppDefinition } from './registry'
 
 export type MiniAppsState = {
@@ -137,14 +138,33 @@ export const resetMiniAppsForTesting = () => {
   listeners.clear()
 }
 
+/**
+ * Deployment apps plus the ones built on this computer.
+ *
+ * `failed` describes the deployment registry only. Local apps come off disk, so
+ * they still resolve when the backend is unreachable — callers that find an app
+ * should render it before consulting `failed`.
+ */
 export const useMiniApps = (): MiniAppsState => {
   const httpClient = useHttpClient()
   const snapshot = useSyncExternalStore(subscribe, () => state)
+  const localApps = useLocalMiniAppsStore((local) => local.apps)
+  const localLoaded = useLocalMiniAppsStore((local) => local.loaded)
 
   // Fetching an external resource on mount — the one thing effects are for.
   useEffect(() => {
     void loadMiniApps(httpClient)
   }, [httpClient])
 
-  return snapshot
+  useEffect(() => {
+    void ensureLocalMiniAppsLoaded()
+  }, [])
+
+  return useMemo(
+    () =>
+      localApps.length === 0 && localLoaded
+        ? snapshot
+        : { ...snapshot, apps: [...snapshot.apps, ...localApps], loading: snapshot.loading || !localLoaded },
+    [snapshot, localApps, localLoaded],
+  )
 }

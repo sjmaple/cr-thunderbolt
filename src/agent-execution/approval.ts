@@ -17,6 +17,7 @@ const readOnlyTools = new Set([
   'fetch_content',
   'search_project_chats',
   'get_app_context',
+  'reload_app',
   'skill',
   'getTasks',
   'google_check_inbox',
@@ -29,6 +30,33 @@ const readOnlyTools = new Set([
   'microsoft_get_onedrive_file_content',
 ])
 
+const fileTools = new Set(['write', 'edit'])
+
+/**
+ * Whether a file tool's path stays inside `root`, judged lexically: relative or
+ * absolute under the root, with no `..` segment. Symlinks are not resolved, so
+ * this is a convenience for the app folder the shell created, not a jail.
+ */
+export const isPathInside = (root: string, path: string): boolean => {
+  if (path.split(/[\\/]/).includes('..')) {
+    return false
+  }
+  if (!path.startsWith('/')) {
+    return true
+  }
+  const base = root.endsWith('/') ? root : `${root}/`
+  return path.startsWith(base)
+}
+
+/** File changes inside the app being built are the point of build mode, so they don't ask. */
+const isAppFolderEdit = (execution: AgentExecution, name: string, input: unknown): boolean => {
+  if (execution.location !== 'app' || !fileTools.has(name)) {
+    return false
+  }
+  const path = (input as { path?: unknown } | null)?.path
+  return typeof path === 'string' && isPathInside(execution.cwd, path)
+}
+
 /** One turn's approval gate, shared by Pi and the legacy engine. Requests queue per chat. */
 export const createToolAuthorizer = (
   execution: AgentExecution,
@@ -37,7 +65,7 @@ export const createToolAuthorizer = (
   let pending: Promise<void> = Promise.resolve()
   return async (name, input, id, signal) => {
     signal?.throwIfAborted()
-    if (execution.access === 'full' || readOnlyTools.has(name)) {
+    if (execution.access === 'full' || readOnlyTools.has(name) || isAppFolderEdit(execution, name, input)) {
       return
     }
     const previous = pending

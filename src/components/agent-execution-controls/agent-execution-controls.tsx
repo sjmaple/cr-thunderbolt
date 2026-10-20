@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Box, Cloud, Monitor, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { Box, Cloud, Hammer, Monitor, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { Trans, useLingui } from '@lingui/react/macro'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,74 +16,96 @@ import { useAgentExecutionControlsState } from './use-agent-execution-controls-s
 import { cn } from '@/lib/utils'
 
 /** Execution location and permission mode for the built-in agent. */
-export const AgentExecutionControls = ({ threadId, disabled }: { threadId: string; disabled: boolean }) => {
+type AgentExecutionControlsProps = {
+  threadId: string
+  /** The Mini App this chat belongs to; a local one puts the chat in build mode. */
+  miniAppId?: string | null
+  disabled: boolean
+}
+
+export const AgentExecutionControls = ({ threadId, miniAppId = null, disabled }: AgentExecutionControlsProps) => {
   const { t } = useLingui()
-  const state = useAgentExecutionControlsState(threadId)
-  const { execution, setExecution } = state
+  const state = useAgentExecutionControlsState(threadId, miniAppId)
+  const { execution, setExecution, buildingApp } = state
   const computer = execution.location === 'computer'
   const full = execution.access === 'full'
+  const buildingAppName = buildingApp?.name
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            disabled={disabled || state.pending}
-            aria-label={t`Agent location`}
-            title={computer ? t`This computer` : t`Local sandbox`}
-            className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
-          >
-            {computer ? (
-              <Monitor className="size-[var(--icon-size-default)]" />
-            ) : (
-              <Box className="size-[var(--icon-size-default)]" />
+      {buildingApp ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          disabled
+          aria-label={t`Building ${buildingAppName}`}
+          title={t`Building ${buildingAppName}`}
+          className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] text-muted-foreground disabled:opacity-100"
+        >
+          <Hammer className="size-[var(--icon-size-default)]" />
+        </Button>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={disabled || state.pending}
+              aria-label={t`Agent location`}
+              title={computer ? t`This computer` : t`Local sandbox`}
+              className="size-[var(--touch-height-control)] rounded-[var(--radius-control)] text-muted-foreground hover:bg-accent/50 hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+            >
+              {computer ? (
+                <Monitor className="size-[var(--icon-size-default)]" />
+              ) : (
+                <Box className="size-[var(--icon-size-default)]" />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" className="w-72">
+            {state.desktop && (
+              <DropdownMenuItem className="cursor-pointer" onSelect={state.openFolder}>
+                <Monitor />
+                <div>
+                  <div>
+                    <Trans>This computer</Trans>
+                  </div>
+                  <p className="break-all text-muted-foreground text-[length:var(--font-size-xs)]">
+                    {computer ? execution.cwd : <Trans>Real files and commands on your computer</Trans>}
+                  </p>
+                </div>
+              </DropdownMenuItem>
             )}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" className="w-72">
-          {state.desktop && (
-            <DropdownMenuItem className="cursor-pointer" onSelect={state.openFolder}>
-              <Monitor />
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => setExecution({ ...execution, location: 'sandbox' })}
+            >
+              <Box />
               <div>
                 <div>
-                  <Trans>This computer</Trans>
+                  <Trans>Local sandbox</Trans>
                 </div>
-                <p className="break-all text-muted-foreground text-[length:var(--font-size-xs)]">
-                  {computer ? execution.cwd : <Trans>Real files and commands on your computer</Trans>}
+                <p className="text-muted-foreground text-[length:var(--font-size-xs)]">
+                  <Trans>Private workspace inside Thunderbolt</Trans>
                 </p>
               </div>
             </DropdownMenuItem>
-          )}
-          <DropdownMenuItem
-            className="cursor-pointer"
-            onSelect={() => setExecution({ ...execution, location: 'sandbox' })}
-          >
-            <Box />
-            <div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem disabled>
+              <Cloud />
               <div>
-                <Trans>Local sandbox</Trans>
+                <div>
+                  <Trans>Cloud</Trans>
+                </div>
+                <p className="text-muted-foreground text-[length:var(--font-size-xs)]">
+                  <Trans>Coming soon</Trans>
+                </p>
               </div>
-              <p className="text-muted-foreground text-[length:var(--font-size-xs)]">
-                <Trans>Private workspace inside Thunderbolt</Trans>
-              </p>
-            </div>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem disabled>
-            <Cloud />
-            <div>
-              <div>
-                <Trans>Cloud</Trans>
-              </div>
-              <p className="text-muted-foreground text-[length:var(--font-size-xs)]">
-                <Trans>Coming soon</Trans>
-              </p>
-            </div>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button

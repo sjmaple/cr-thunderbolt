@@ -324,6 +324,8 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   const setTools = useMiniAppStore((state) => state.setTools)
   const setContextReader = useMiniAppStore((state) => state.setContextReader)
   const resetGuest = useMiniAppStore((state) => state.resetGuest)
+  const reportRuntimeError = useMiniAppStore((state) => state.reportRuntimeError)
+  const setBridge = useMiniAppStore((state) => state.setBridge)
 
   // Held in a ref so a new callback identity from the parent doesn't tear down
   // and re-add the message listener mid-session (which would drop in-flight
@@ -581,6 +583,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
 
       if (message.method === miniAppGuestMethods.runtimeError) {
         dispatch({ type: 'RUNTIME_ERROR_REPORTED', message: message.params.message })
+        reportRuntimeError(message.params.message)
         return
       }
 
@@ -701,7 +704,7 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
     // settings load a beat after first render. Re-subscribing is cheap — but
     // only for things that genuinely change identity, which is why `theme` is a
     // ref above rather than listed here.
-  }, [app.id, app.origin, httpClient, pending, post, resetGuest])
+  }, [app.id, app.origin, httpClient, pending, post, resetGuest, reportRuntimeError])
 
   /**
    * Fail visibly when the guest never handshakes — an app that isn't running
@@ -980,6 +983,12 @@ export const useMiniAppBridge = ({ app, onChatOpen }: UseMiniAppBridgeOptions) =
   useEffect(() => {
     setContextReader(requestContext)
   }, [requestContext, setContextReader])
+
+  // Same reason as the reader above: `reload_app` runs outside React and has to
+  // reach the frame and see whether the reloaded document handshook.
+  useEffect(() => {
+    setBridge({ reloadFrame, status })
+  }, [reloadFrame, status, setBridge])
 
   /** The user's answer to the save on screen. */
   const answerDownload = useCallback(

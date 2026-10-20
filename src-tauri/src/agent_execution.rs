@@ -17,7 +17,7 @@ use tokio::{io::AsyncReadExt, process::Command, sync::watch};
 #[derive(Default)]
 pub struct Commands(Mutex<HashMap<String, watch::Sender<bool>>>);
 
-fn require_main(webview: &tauri::Webview) -> Result<(), String> {
+pub(crate) fn require_main(webview: &tauri::Webview) -> Result<(), String> {
     if !cfg!(desktop) || webview.label() != "main" {
         return Err("Computer execution is only available in the desktop main window".into());
     }

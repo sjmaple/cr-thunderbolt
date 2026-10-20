@@ -38,7 +38,15 @@ export type MiniAppDefinition = {
    * be the one an operator declared, not one the app can influence.
    */
   origin: string
+  /**
+   * Folder on this computer for an app the agent built here, served by the
+   * desktop shell on `tbapp://<id>/`. Absent for deployment apps.
+   */
+  localPath?: string
 }
+
+/** An app that lives on this computer rather than in the deployment's registry. */
+export type LocalMiniAppDefinition = MiniAppDefinition & { localPath: string }
 
 /**
  * The wire shape of one app from `GET /mini-apps`, from `shared/` so the
@@ -78,6 +86,9 @@ const iconsByKey = new Map<string, LucideIcon>([
   ['stethoscope', Stethoscope],
   ['table', Table],
 ])
+
+/** The icon keys an app may name, for telling the model which ones exist. */
+export const miniAppIconKeys = (): string[] => [...iconsByKey.keys()]
 
 /** Unknown or missing icon keys render as a generic window rather than nothing. */
 export const resolveMiniAppIcon = (key: string): LucideIcon => iconsByKey.get(key) ?? AppWindow

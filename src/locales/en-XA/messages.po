@@ -567,8 +567,20 @@ msgstr ""
 msgid "Browser"
 msgstr ""
 
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "Build a Mini App with the assistant"
+msgstr ""
+
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "Build an app"
+msgstr ""
+
 #: src/components/settings/agents/thunderbolt-cli.tsx
 msgid "Build it from source instead (requires Bun):"
+msgstr ""
+
+#: src/components/agent-execution-controls/agent-execution-controls.tsx
+msgid "Building {buildingAppName}"
 msgstr ""
 
 #: src/settings/models/model-detail.tsx
@@ -2479,6 +2491,10 @@ msgstr ""
 msgid "New Agent"
 msgstr ""
 
+#: src/layout/sidebar/chat-sidebar.tsx
+#~ msgid "New app"
+#~ msgstr ""
+
 #: src/mini-apps/mini-app-chat-history.tsx
 #: src/search/commands/use-commands.ts
 msgid "New chat"
@@ -4280,6 +4296,10 @@ msgstr ""
 
 #: src/components/settings/agents/agent-detail.tsx
 msgid "Unreachable {relative}"
+msgstr ""
+
+#: src/layout/sidebar/chat-sidebar.tsx
+msgid "Untitled app"
 msgstr ""
 
 #: src/lib/title-generator.ts

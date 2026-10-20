@@ -8,6 +8,7 @@ pub mod agent_execution;
 pub mod cli_installer;
 #[allow(dead_code)]
 pub mod commands;
+pub mod mini_app_host;
 pub mod oauth_server;
 pub mod platform_utils;
 
@@ -54,12 +55,20 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
             agent_execution::agent_cancel_command,
             agent_execution::agent_forget_command,
             agent_execution::agent_exec,
+            mini_app_host::mini_apps_list,
+            mini_app_host::mini_apps_create,
+            mini_app_host::mini_apps_delete,
             commands::toggle_dock_icon,
             commands::capabilities,
             commands::set_interface_style,
             commands::start_oauth_server,
             commands::install_thunderbolt_cli,
         ]);
+
+    #[cfg(desktop)]
+    {
+        builder = mini_app_host::register(builder);
+    }
 
     #[cfg(debug_assertions)]
     {

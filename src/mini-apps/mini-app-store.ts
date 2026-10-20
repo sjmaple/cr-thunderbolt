@@ -22,6 +22,7 @@ import { create } from 'zustand'
 import { useChatStore } from '@/chats/chat-store'
 import type { MiniAppContext, MiniAppTool, MiniAppToolCallResult } from '@shared/mini-app-protocol'
 import type { MiniAppDefinition } from './registry'
+import type { MiniAppBridgeStatus } from './use-mini-app-bridge'
 
 /** Invokes a tool inside the frame. Installed by the bridge while an app is open. */
 export type MiniAppToolInvoker = (name: string, args: unknown) => Promise<MiniAppToolCallResult>
@@ -50,7 +51,16 @@ type MiniAppState = {
    * artifact store's `openedAt`, so the two have to mean the same thing.
    */
   openedAt: number | null
+  /** Where the bridge's handshake stands, for tools that wait on a reload. */
+  bridgeStatus: MiniAppBridgeStatus
+  /** Errors the current document reported about itself, oldest first, capped. */
+  runtimeErrors: string[]
+  /** Bridge-installed: load the app's document again. Null when no app is mounted. */
+  reloadFrame: (() => void) | null
 }
+
+/** Most errors held per document; a page throwing in a loop would otherwise grow without bound. */
+const maxRuntimeErrors = 20
 
 type MiniAppActions = {
   /** Mark an app as open. Clears state left over from a previous app. */
@@ -69,9 +79,22 @@ type MiniAppActions = {
    * tools describe a page that no longer exists.
    */
   resetGuest: () => void
+  /** Install the bridge's reload and mirror its status. */
+  setBridge: (bridge: { reloadFrame: () => void; status: MiniAppBridgeStatus }) => void
+  /** Record an error the guest reported. */
+  reportRuntimeError: (message: string) => void
 }
 
-const emptyAppState = { activeApp: null, tools: [], invokeTool: null, requestContext: null, openedAt: null }
+const emptyAppState = {
+  activeApp: null,
+  tools: [],
+  invokeTool: null,
+  requestContext: null,
+  openedAt: null,
+  bridgeStatus: 'connecting' as const,
+  runtimeErrors: [],
+  reloadFrame: null,
+}
 
 export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) => ({
   ...emptyAppState,
@@ -91,13 +114,16 @@ export const useMiniAppStore = create<MiniAppState & MiniAppActions>((set, get) 
   setContextReader: (requestContext) => set({ requestContext }),
   resetGuest: () => {
     const { activeApp } = get()
-    set({ tools: [], invokeTool: null, requestContext: null })
+    set({ tools: [], invokeTool: null, requestContext: null, runtimeErrors: [] })
     // Same reasoning as `closeApp`: the document that would have serviced these
     // approvals is gone, so nothing can honour them.
     if (activeApp) {
       useChatStore.getState().cancelMiniAppApprovals(activeApp.id)
     }
   },
+  setBridge: ({ reloadFrame, status }) => set({ reloadFrame, bridgeStatus: status }),
+  reportRuntimeError: (message) =>
+    set((state) => ({ runtimeErrors: [...state.runtimeErrors, message].slice(-maxRuntimeErrors) })),
 }))
 
 /**

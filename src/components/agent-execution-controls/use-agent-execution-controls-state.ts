@@ -7,10 +7,15 @@ import { invoke } from '@tauri-apps/api/core'
 import { useLingui } from '@lingui/react/macro'
 import { defaultAgentExecution, useAgentExecutionStore } from '@/agent-execution/store'
 import { isTauriDesktop } from '@/lib/platform'
+import { useLocalMiniAppsStore } from '@/mini-apps/local-mini-apps'
 
 /** Keeps workspace validation and local runtime settings outside the controls' markup. */
-export const useAgentExecutionControlsState = (threadId: string) => {
+export const useAgentExecutionControlsState = (threadId: string, miniAppId: string | null = null) => {
   const { t } = useLingui()
+  // A chat beside a local app builds that app; the location is not the user's to pick.
+  const buildingApp = useLocalMiniAppsStore((state) =>
+    miniAppId ? state.apps.find((app) => app.id === miniAppId) : undefined,
+  )
   const execution = useAgentExecutionStore((state) => state.byThread[threadId] ?? defaultAgentExecution)
   const setExecution = useAgentExecutionStore((state) => state.setExecution)
   const [error, setError] = useState<string | null>(null)
@@ -34,6 +39,7 @@ export const useAgentExecutionControlsState = (threadId: string) => {
     execution,
     setExecution: (next: typeof execution) => setExecution(threadId, next),
     desktop: isTauriDesktop(),
+    buildingApp,
     error,
     pending,
     openFolder,
