@@ -64,13 +64,11 @@ Switch the add form to **Advanced (JSON)** and paste an existing `mcpServers` bl
 
 ### Reachability
 
-Every published build, browser and desktop and mobile alike, relays through your deployment's backend. That relay refuses private, internal and loopback addresses, since it would otherwise be a way to reach inside your network from a browser tab. A server on `http://localhost:3000/mcp` is not reachable from a released build. Bridge it instead, as below.
+Desktop and mobile connect to HTTP/SSE MCP servers directly by default. **Settings → Preferences → Network → Use Cloud Proxy** routes them through your deployment's backend when enabled. The browser always uses that backend, which refuses private, internal and loopback addresses. A server on `http://localhost:3000/mcp` is reachable from a native app with Cloud Proxy off, but not through the backend.
 
-The add form checks something narrower: whether the address is one the device itself could reach. It accepts plain `http://` only for loopback and private addresses, and requires `https://` for anything on a public host.
+The add form checks whether the device could reach the address: plain `http://` is allowed only for loopback and private addresses; public hosts require `https://`. Saving an address does not prove the backend can reach it.
 
-> `http://localhost:3000/mcp` passes both the form and the JSON importer and is still refused in transit, with no warning at save time.
-
-The desktop app has a **Use Cloud Proxy** switch in Settings → Preferences that looks like it changes this. For MCP servers it does not: the direct path needs a build flag that no released build enables, so those calls are relayed either way. External agents are different, and do follow the switch.
+Native GET requests do not follow redirects, so credentials never follow a redirect. A signed-out user with Cloud Proxy on gets backend 401s until they turn it off or sign in. ACP WebSockets stay direct on native apps regardless of the switch.
 
 ### Local servers
 
@@ -118,7 +116,7 @@ The built-in assistant needs no setup and appears under **Your agents**, marked 
 
 **Settings → Agents → New Agent.** The URL is either a WebSocket endpoint (`wss://example.com/ws`) or a pairing ticket from a bridge; a bare peer identity also works if the peer is discoverable. A WebSocket endpoint must pass **Test connection** before it can be saved. A peer-to-peer target is verified on the first chat instead, because it has to be authorized on the bridge first.
 
-Test connection always dials directly from the device. A passing test proves the endpoint is alive, not that the path a saved agent takes on web will work. The same reachability rules as MCP apply: an agent on `ws://127.0.0.1:...` is reachable from the desktop app with Cloud Proxy off, and from nowhere else. Use a peer-to-peer bridge for everything else.
+Test connection always dials directly from the device. A passing test proves the endpoint is alive, not that the path a saved agent takes on web will work. Native apps keep ACP WebSockets direct regardless of Cloud Proxy. A loopback agent is reachable only from the device running it; the web relay refuses it. Use a peer-to-peer bridge for everything else.
 
 Custom agents sync to your other devices, name, URL and description together.
 
@@ -137,7 +135,7 @@ thunderbolt acp --transport iroh -- thunderbolt acp serve
 
 Copy the printed ticket into the agent's URL field. To span several projects, start the bridge from a common parent directory.
 
-A loopback bridge is also available (`--transport wss`, default port `8839`), printing a URL of the form `ws://127.0.0.1:<port>/?token=...`. The token is regenerated on every start, so a saved URL stops working once the bridge restarts. That transport only works in the desktop app with Cloud Proxy off.
+A loopback bridge is also available (`--transport wss`, default port `8839`), printing a URL of the form `ws://127.0.0.1:<port>/?token=...`. The token is regenerated on every start, so a saved URL stops working once the bridge restarts. Native apps connect to it directly regardless of Cloud Proxy; the web relay refuses loopback targets.
 
 ### Approving what an agent does
 
@@ -179,7 +177,7 @@ MCP tool calls are not approved one by one. Once a server is connected and enabl
 
 Stored credentials never reach the model, and are never part of the conversation. For an `http` or `sse` server the credential does transit your deployment's relay, which forwards it untouched and stores nothing; only a peer-to-peer bridge is end to end.
 
-One path reaches inside your network: an external agent in the desktop app with Cloud Proxy off. Everything else is relayed, and the relay refuses private and internal addresses.
+Native apps can reach private addresses directly for own-key models and HTTP/SSE MCP servers with Cloud Proxy off, and for ACP WebSockets regardless of the switch. The browser and native HTTP/SSE calls with Cloud Proxy on use the backend relay, which refuses private and internal addresses. Custom loopback models always stay device-direct.
 
 The agent the Thunderbolt command-line tool serves is confined to the directory the bridge was launched from and everything below it, ignores any working directory the app sends, has no shell tool, and refuses to fetch loopback or private addresses. A bridged third-party agent enforces its own scope, and whether it can run shell commands is up to that agent.
 

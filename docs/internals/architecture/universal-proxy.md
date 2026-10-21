@@ -1,7 +1,8 @@
 # The Universal Proxy
 
-One endpoint pair carries every cross-origin request to a user-configured third party: BYOK LLM
-completions, MCP sessions, ACP agent sockets.
+One endpoint pair carries relayed requests to user-configured third parties: own-key model
+inference and catalogs, MCP sessions, and ACP agent sockets. Web uses the relay; native HTTP
+opts in with Cloud Proxy, and native ACP WebSockets stay direct.
 
 | Endpoint          | Implementation                                                      |
 | ----------------- | ------------------------------------------------------------------- |
@@ -107,8 +108,8 @@ SSRF decision. Hop 0 is the initial fetch; hops 1-5 are follows, each re-validat
   ([ws.ts:107-127](../../../backend/src/proxy/ws.ts#L107)).
 - **Local model servers bypass the proxy** (Ollama, LM Studio), since backend `localhost` is not
   the user's machine, so loopback endpoints use the plain fetch
-  ([src/ai/fetch.ts:295-312](../../../src/ai/fetch.ts#L295)). Everything else, RFC-1918 LAN addresses
-  and `host.docker.internal` included, stays on the proxy path.
+  ([src/ai/fetch.ts:295-312](../../../src/ai/fetch.ts#L295)). Everything else follows the platform and
+  Cloud Proxy setting; web and Tauri with the toggle on use the hosted proxy, which blocks RFC-1918 LAN addresses and `host.docker.internal`.
 
 ## Caps, timeouts, and how they fail
 
@@ -229,15 +230,14 @@ emitted by either proxy path today).
 
 ## The client side: which fetch to use
 
-Five entry points, not interchangeable:
+Four entry points, not interchangeable:
 
-| Use it for                                                                   | Entry point                                                                                                                                                                                      |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| An authenticated call to our own backend                                     | `useHttpClient()` ([src/contexts/http-client-context.tsx](../../../src/contexts/http-client-context.tsx)), or `createAuthenticatedClient` ([src/lib/http.ts:185](../../../src/lib/http.ts#L185)) |
-| An external API with no app headers or auth                                  | `http` ([src/lib/http.ts:252](../../../src/lib/http.ts#L252))                                                                                                                                    |
-| An LLM, MCP, or ACP upstream                                                 | `useFetch()` / `useProxyFetchGetter()` ([src/lib/proxy-fetch-context.tsx](../../../src/lib/proxy-fetch-context.tsx))                                                                             |
-| A CORS-blocked fetch that must not touch the proxy (loopback, model catalog) | `fetch` from [src/lib/fetch.ts](../../../src/lib/fetch.ts)                                                                                                                                       |
-| An MCP SDK transport that offers no fetch injection                          | `TauriStreamableHTTPClientTransport` ([src/lib/tauri-http-transport.ts:27](../../../src/lib/tauri-http-transport.ts#L27))                                                                        |
+| Use it for                                       | Entry point                                                                                                                                                                                      |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| An authenticated call to our own backend         | `useHttpClient()` ([src/contexts/http-client-context.tsx](../../../src/contexts/http-client-context.tsx)), or `createAuthenticatedClient` ([src/lib/http.ts:185](../../../src/lib/http.ts#L185)) |
+| An external API with no app headers or auth      | `http` ([src/lib/http.ts:252](../../../src/lib/http.ts#L252))                                                                                                                                    |
+| Own-key model inference/catalogs or MCP HTTP/SSE | `useFetch()` / `useProxyFetchGetter()` ([src/lib/proxy-fetch-context.tsx](../../../src/lib/proxy-fetch-context.tsx))                                                                             |
+| A loopback model that must stay device-direct    | `fetch` from [src/lib/fetch.ts](../../../src/lib/fetch.ts)                                                                                                                                       |
 
 - **`createAuthenticatedClient` is the only path** injecting `X-Device-ID`, `X-Device-Name`,
   `X-App-Version` and `X-App-Language`, and the only one turning a 426 into the upgrade blocker. It
@@ -250,32 +250,29 @@ Five entry points, not interchangeable:
 - **`src/lib/fetch.ts` is the Tauri-aware escape hatch.** It honours the "Use Native Fetch" dev
   setting and re-checks the `native_fetch` capability before invoking the plugin, so a stale `true`
   cannot call an unregistered plugin.
-- **`TauriStreamableHTTPClientTransport` monkey-patches `globalThis.fetch`** for the SDK
-  constructor's duration: a workaround for a transport with no injection point, not a pattern to
-  copy.
 
 ### Hosted and Standalone
 
-`createProxyFetch` hides one branch from call sites
-([src/lib/proxy-fetch.ts:200-236](../../../src/lib/proxy-fetch.ts#L200)):
+`createProxyFetch` selects the route per request ([src/lib/proxy-fetch.ts](../../../src/lib/proxy-fetch.ts)):
 
-- **Hosted** wraps the request for `${cloudUrl}/proxy`. Always the case on web.
-- **Standalone** calls the upstream directly through Tauri's HTTP plugin, so the user's IP never
-  reaches our backend. Requires all three of: running under Tauri, `proxy_enabled` _off_, and a
-  build compiled with the `native_fetch` capability.
+- **Hosted** wraps the request for `${cloudUrl}/proxy`. Web always uses it; Tauri desktop and
+  mobile opt in with **Use Cloud Proxy** (`proxy_enabled=true`). The hosted hop includes backend
+  session credentials (`credentials: 'include'`, including cookie-only SSO) and the app-version header.
+- **Standalone** sends directly from the device through Tauri's HTTP plugin when the setting is
+  OFF or absent. Native HTTP ships on every Tauri build, without a persisted cookie jar,
+  and trusts OS certificates alongside bundled public roots.
+  A missing capability throws `NativeHttpUnavailableError` with instructions to update the app
+  or enable Cloud Proxy. Native failures propagate without a backend retry.
+- **Native redirects, including GET, are disabled** (`maxRedirections: 0`) because reqwest retains provider-specific
+  credentials such as `x-api-key` across redirects. This does not change hosted redirect handling.
+  A `Request` input's signal is passed explicitly to the native shim; `init.signal` takes precedence.
+- **Custom loopback models always stay device-direct** through `src/lib/fetch.ts`, on web and Tauri.
+  ACP WebSockets stay Tauri-direct even with Cloud Proxy on; Tinfoil keeps its attested client.
 
-Three gotchas:
-
-- **Note the polarity**: `proxy_enabled` _off_ is the direct path, and off is the default
-  (`useLocalStorage('proxy_enabled', 'false')`).
-- **Web always proxies** (browser CORS leaves no choice), so the setting is UI-disabled there and
-  when signed out
-  ([src/settings/preferences.tsx:207-216](../../../src/settings/preferences.tsx#L207)).
-- **A Tauri build without `--features native_fetch`** falls back to the hosted proxy regardless of
-  the toggle: the plugin's JS shim would throw "plugin http not found".
-
-`computeEffectiveProxyEnabled` computes it once; the React provider, MCP transports, settings toggle
-and the ACP transport's `isStandaloneTransport` all call it rather than re-deriving.
+`computeEffectiveProxyEnabled` is the shared policy. The preferences switch shows the effective
+value, permits turning it off while signed out, and requires sign-in to enable it. Web shows it
+on and disabled. A signed-out user with Cloud Proxy on gets backend 401s until they turn it off
+or sign in.
 
 ### Outer-hop headers must not be promoted
 
@@ -295,17 +292,16 @@ exactly like our version gate and acting on the status would blank the whole app
 pairs 426 with an `APP_VERSION_UNSUPPORTED` body code, so that code is the discriminator
 ([src/lib/proxy-fetch.ts:152-163](../../../src/lib/proxy-fetch.ts#L152)); the check reads a clone, so
 the body still reaches the caller intact. On the direct-to-backend path in `src/lib/http.ts` the
-status _is_ sufficient: no upstream to confuse it with.
+status _is_ sufficient: no upstream to confuse it with. Native provider responses never run
+backend session-rejection or upgrade handling, even if their 401/426 bodies imitate backend codes.
 
 ### `useFetch()` versus `useProxyFetchGetter()`
 
-The provider memoises one `proxyFetch` per `cloudUrl` and effective-proxy value. `useFetch()`
-returns it, correct in a component that re-renders when either changes, wrong in a closure that
-outlives a render. The AI SDK's `customFetch` and the chat instance are built once per chat, so a
-captured `useFetch()` freezes the proxy and a later `cloud_url` or toggle change never reaches an
-open chat. Use `useProxyFetchGetter()` there, a ref-backed getter called at invocation time
-([src/lib/proxy-fetch-context.tsx:111](../../../src/lib/proxy-fetch-context.tsx#L111)); hence the model
-factory takes `getProxyFetch: () => FetchFn`.
+The provider memoises one `proxyFetch` per `cloudUrl`. Each request reads the current
+`proxy_enabled` setting, so even a fetch captured by the Pi harness follows toggle changes.
+`useProxyFetchGetter()` is a ref-backed getter for callers that also need a changed `cloudUrl`
+without recreating their chat ([src/lib/proxy-fetch-context.tsx](../../../src/lib/proxy-fetch-context.tsx));
+hence the model factory takes `getProxyFetch: () => FetchFn`.
 
 ## Where the code lives
 

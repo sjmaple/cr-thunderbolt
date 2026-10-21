@@ -128,7 +128,9 @@ The key is stored on the device it was typed on and is never synced to other dev
 
 Requests are relayed by your API service so the browser can reach providers that refuse cross-origin calls. The relay forwards the key untouched, stores nothing, and logs the upstream hostname rather than the URL. It never logs message content.
 
-Desktop and mobile relay through your API service as well. The desktop app shows a **Settings → Preferences → Network → Use Cloud Proxy** switch, but the direct path it would select is behind a build flag that no released build enables, so plan for provider traffic leaving your server rather than user devices. The switch is greyed out in the browser, which has no alternative.
+Desktop and mobile send provider requests directly from the device by default, using native HTTP. Turning on **Settings → Preferences → Network → Use Cloud Proxy** opts into relaying them through your API service. The switch is always on and greyed out in the browser. Custom loopback models always connect directly on every platform.
+
+Native GET requests do not follow redirects, so credentials never follow a redirect. A signed-out user with Cloud Proxy on gets backend 401s until they turn it off or sign in.
 
 Adding a model requires a successful **Test Connection** first. The only exception is the deployment-provided models, which have nothing for the user to verify.
 

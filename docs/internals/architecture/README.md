@@ -6,7 +6,7 @@ A reference map of Thunderbolt: the components, how they talk, and where state l
 
 - **Offline-first.** Local SQLite is the source of truth. The app works without network.
 - **Cross-platform.** One React codebase runs in Tauri on desktop (macOS, Linux, Windows) and mobile (iOS, Android).
-- **Model-agnostic.** A model row names one of six providers: `anthropic`, `openai`, `openrouter`, `tinfoil`, `custom` (any OpenAI-compatible endpoint), or the backend's `thunderbolt` catalog (`src/settings/models/use-add-model-form.ts`). BYOK calls go through the universal proxy at `/v1/proxy`, which maps caller headers to `X-Proxy-Passthrough-*` and forwards the caller's credentials (`src/lib/proxy-fetch.ts`). Only a Tauri build compiled with the `native_fetch` Cargo feature can skip it (when `proxy_enabled` is off), but that feature defaults to off and no build in this repo passes it, so every shipped build proxies ([tauri-shell.md](tauri-shell.md#the-native_fetch-cargo-feature)). Managed models use `/v1/chat/*` instead.
+- **Model-agnostic.** A model row names one of six providers: `anthropic`, `openai`, `openrouter`, `tinfoil`, `custom` (any OpenAI-compatible endpoint), or the backend's `thunderbolt` catalog (`src/settings/models/use-add-model-form.ts`). BYOK calls through `createProxyFetch` go device-direct via native HTTP on Tauri desktop and mobile by default; `proxy_enabled` opts into the backend universal proxy at `/v1/proxy`. Web always proxies. Custom loopback endpoints always use device-direct webview fetch, and Tinfoil keeps its attested client ([tauri-shell.md](tauri-shell.md#native-http)). Managed models use `/v1/chat/*` instead.
 - **Self-hostable.** The whole server stack (backend, PostgreSQL, PowerSync, Keycloak) runs via Docker Compose, Kubernetes, or Pulumi.
 - **E2E encrypted.** Always on: content is encrypted before leaving the device and the server stores only ciphertext for it ([E2E Encryption](e2e-encryption.md)).
 
@@ -55,7 +55,8 @@ graph TB
 
   CRYPTO -- "sync (HTTPS)" --> PS
   STATE -- "REST / HTTPS" --> API
-  AI -- "own key (SSE)" --> PROXY
+  AI -- "own key: web or Cloud Proxy on (SSE)" --> PROXY
+  AI -- "own key: Tauri default (SSE)" --> LLM
   AI -- "managed models (SSE)" --> INFERENCE
   UI -- "OAuth redirect" --> AUTH
 
