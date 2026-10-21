@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterEach, describe, expect, it, spyOn } from 'bun:test'
 import { getClock } from '@/testing-library'
-import { createCapabilitiesGetter, isIndexedDbAvailable, isPrPreview, prPreviewHostRegex } from './platform'
+import { isIndexedDbAvailable, isPrPreview, prPreviewHostRegex } from './platform'
 
 describe('prPreviewHostRegex', () => {
   it('matches thunderbolt-pr-{number}.onrender.com hostnames', () => {
@@ -146,21 +146,5 @@ describe('isIndexedDbAvailable', () => {
     const promise = isIndexedDbAvailable(idb)
     await getClock().tickAsync(5000)
     expect(await promise).toBe(false)
-  })
-})
-
-describe('getCapabilities', () => {
-  it('retries transient IPC failures and caches only a successful capability response', async () => {
-    const errorLog = spyOn(console, 'error').mockImplementation(() => {})
-    const invoke = mock(async () => ({ native_fetch: true })).mockRejectedValueOnce(new Error('temporary IPC failure'))
-    const getCapabilities = createCapabilitiesGetter(invoke, () => true)
-    try {
-      expect(await getCapabilities()).toEqual({ native_fetch: false })
-      expect(await getCapabilities()).toEqual({ native_fetch: true })
-      expect(await getCapabilities()).toEqual({ native_fetch: true })
-      expect(invoke).toHaveBeenCalledTimes(2)
-    } finally {
-      errorLog.mockRestore()
-    }
   })
 })

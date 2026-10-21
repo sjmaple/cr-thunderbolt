@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { invoke, isTauri as isTauriCore } from '@tauri-apps/api/core'
+import { isTauri as isTauriCore } from '@tauri-apps/api/core'
 import { platform, type Platform } from '@tauri-apps/plugin-os'
 import type { DatabaseType } from '../db/database'
 
@@ -236,52 +236,7 @@ export const isIndexedDbAvailable = async (idb?: IDBFactory | null): Promise<boo
   }
 }
 
-// -----------------------------------------------------------------------------
-// Capabilities
-// -----------------------------------------------------------------------------
-
-export type Capabilities = {
-  native_fetch: boolean
-}
-
-const defaultCapabilities: Capabilities = { native_fetch: false }
-
-/** Create an independent capability cache with injectable shell access. */
-export const createCapabilitiesGetter = (
-  invokeCapabilities: () => Promise<Capabilities> = () => invoke<Capabilities>('capabilities'),
-  isNative = isTauri,
-) => {
-  let capabilitiesPromise: Promise<Capabilities> | undefined
-
-  /** Probe the shell without retaining transient IPC failures. */
-  const fetchCapabilities = async (): Promise<Capabilities> => {
-    try {
-      return await invokeCapabilities()
-    } catch (error) {
-      capabilitiesPromise = undefined
-      console.error('Failed to retrieve capabilities:', error)
-      return defaultCapabilities
-    }
-  }
-
-  return (): Promise<Capabilities> => {
-    if (!isNative()) {
-      return Promise.resolve(defaultCapabilities)
-    }
-    capabilitiesPromise ??= fetchCapabilities()
-    return capabilitiesPromise
-  }
-}
-
-/** Cache successful native capability probes; retry after transient IPC failures. */
-export const getCapabilities = createCapabilitiesGetter()
-
-/**
- * Determines the appropriate database type based on the platform and the
- * capabilities exposed by the backend.
- *
- * Note: this is asynchronous because we might need to query the backend once.
- */
+/** Return the app database implementation. */
 export const getDatabaseType = async (): Promise<DatabaseType> => {
   return 'powersync'
 }

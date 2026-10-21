@@ -42,7 +42,6 @@ pub fn create_app() -> tauri::Builder<tauri::Wry> {
         .plugin(platform_utils::init())
         .invoke_handler(tauri::generate_handler![
             commands::toggle_dock_icon,
-            commands::capabilities,
             commands::set_interface_style,
             commands::start_oauth_server,
             commands::install_thunderbolt_cli,

@@ -166,7 +166,6 @@ describe('useFetch + ProxyFetchProvider', () => {
           ...options,
           tauriFetch: native,
           fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
-          getNativeFetchCapability: async () => true,
         })
       const wrapper = ({ children }: { children: ReactNode }) => (
         <ProxyFetchProvider isStandalone={() => true} createFetch={createFetch}>

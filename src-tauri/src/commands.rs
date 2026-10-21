@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use anyhow::Result;
-use serde::Serialize;
 use tauri::command;
 
 #[command]
@@ -68,22 +67,6 @@ pub fn set_interface_style(style: String) -> Result<(), String> {
     }
 
     Ok(())
-}
-
-// === Capabilities ============================================================================
-
-/// List of runtime capabilities that the renderer can query once and cache.
-/// Extend this struct whenever we add more feature flags.
-#[derive(Serialize)]
-pub struct Capabilities {
-    /// Whether the registered `tauri-plugin-http` plugin is available for native HTTP requests.
-    pub native_fetch: bool,
-}
-
-/// Returns the set of capabilities supported by the current build.
-#[command]
-pub fn capabilities() -> Capabilities {
-    Capabilities { native_fetch: true }
 }
 
 // === OAuth loopback server ===================================================================

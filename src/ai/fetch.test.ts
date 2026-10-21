@@ -16,7 +16,7 @@ import { clearAuthToken, getAuthToken, setAuthToken } from '@/lib/auth-token'
 import { fetch as baseFetch } from '@/lib/fetch'
 import type { MCPClient, NamedMCPClient } from '@/lib/mcp-provider'
 import { appVersionUnsupported, resetAppVersionBlockedForTesting } from '@/lib/app-version-unsupported'
-import type { FetchFn } from '@/lib/proxy-fetch'
+import { createProxyFetch, type FetchFn } from '@/lib/proxy-fetch'
 import { resolveSkillTokenInstructions } from '@/skills/resolve-skill-system-messages'
 import { selectEnabledSkillDefinitions } from '@/skills/skill-tool'
 import { useConfigStore } from '@/api/config-store'
@@ -471,6 +471,28 @@ describe('mergeMcpTools', () => {
       await transport.close()
       await settledRecovery
     }
+  })
+
+  it('keeps healthy MCP tools when a native plugin request fails with a string', async () => {
+    const fetch = createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => true,
+      getProxyEnabled: () => false,
+      tauriFetch: async () => {
+        throw 'connection refused'
+      },
+    })
+    const dropped = named('down', async () => {
+      await fetch('http://localhost:8080/mcp')
+      return {}
+    })
+    const reconnect = mock(async () => null)
+    const result = await mergeMcpTools({}, [dropped, named('healthy', async () => ({ beta: tool('b') }))], reconnect)
+    expect(result.toolset).toEqual({ healthy_beta: tool('b') })
+    expect(reconnect).toHaveBeenCalledWith(
+      dropped.client,
+      expect.objectContaining({ name: 'TypeError', message: 'Failed to fetch' }),
+    )
   })
 
   it('keeps app and other server tools when recovery fails', async () => {

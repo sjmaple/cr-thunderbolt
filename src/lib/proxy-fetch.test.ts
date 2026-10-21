@@ -8,7 +8,7 @@
 // `isStandalone` and a fetch override so tests can wire fakes via constructor
 // arguments — pure dependency injection.
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { createProxyFetch, createProxyWebSocket } from './proxy-fetch'
 import { appVersionUnsupported, isAppVersionBlocked, resetAppVersionBlockedForTesting } from './app-version-unsupported'
@@ -205,7 +205,7 @@ describe('createProxyFetch — app-version gate', () => {
 })
 
 describe('createProxyFetch — Standalone (Tauri) mode', () => {
-  it('calls Tauri fetch directly without rewriting headers when toggle is off and native_fetch is available', async () => {
+  it('calls Tauri fetch directly without rewriting headers when the toggle is off', async () => {
     const tauriFetchMock = mock(async () => new Response('tauri-direct', { status: 200 }))
 
     const proxyFetch = createProxyFetch({
@@ -213,7 +213,6 @@ describe('createProxyFetch — Standalone (Tauri) mode', () => {
       isStandalone: () => true,
       tauriFetch: tauriFetchMock as unknown as typeof fetch,
       getProxyEnabled: () => false,
-      getNativeFetchCapability: () => Promise.resolve(true),
     })
 
     await proxyFetch('https://example.com/api', {
@@ -226,27 +225,6 @@ describe('createProxyFetch — Standalone (Tauri) mode', () => {
     expect(calledUrl).toBe('https://example.com/api')
     const h = new Headers(calledInit.headers)
     expect(h.get('authorization')).toBe('Bearer abc')
-  })
-
-  it('throws an actionable named error without sending anything when native HTTP is missing', async () => {
-    const tauriFetchMock = mock(async () => new Response('should-not-be-called', { status: 500 }))
-    const hostedFetchMock = mock(async () => new Response('hosted', { status: 200 }))
-
-    const proxyFetch = createProxyFetch({
-      cloudUrl: 'http://localhost:8000/v1',
-      isStandalone: () => true,
-      tauriFetch: tauriFetchMock as unknown as typeof fetch,
-      fetchImpl: hostedFetchMock as unknown as typeof fetch,
-      getProxyEnabled: () => false,
-      getNativeFetchCapability: () => Promise.resolve(false),
-    })
-
-    await expect(proxyFetch('https://example.com/api')).rejects.toMatchObject({
-      name: 'NativeHttpUnavailableError',
-      message: expect.stringMatching(/update.*enable Cloud Proxy/i),
-    })
-    expect(tauriFetchMock).not.toHaveBeenCalled()
-    expect(hostedFetchMock).not.toHaveBeenCalled()
   })
 })
 
@@ -262,31 +240,37 @@ describe('createProxyFetch — native request boundaries', () => {
   })
 
   it.each(['inherited', 'explicit', 'null'] as const)(
-    'disables native redirects and forwards the Request signal (signal: %s)',
+    'disables native redirects and relays the Request signal (signal: %s)',
     async (override) => {
       const native = mock(
         async (_input: RequestInfo | URL, _init?: RequestInit & { maxRedirections?: number }) => new Response('ok'),
       )
-      const request = new Request('https://provider.example/v1/messages', { signal: new AbortController().signal })
-      const explicitSignal = new AbortController().signal
+      const inherited = new AbortController()
+      const explicit = new AbortController()
+      const request = new Request('https://provider.example/v1/messages', { signal: inherited.signal })
       const proxyFetch = createProxyFetch({
         cloudUrl: 'https://backend.example/v1',
         isStandalone: () => true,
-        getNativeFetchCapability: async () => true,
         tauriFetch: native,
         fetchImpl: Object.assign(async () => new Response('unexpected backend'), { preconnect: fetch.preconnect }),
       })
 
-      await proxyFetch(
+      const response = await proxyFetch(
         request,
-        override === 'inherited' ? undefined : { signal: override === 'null' ? null : explicitSignal },
+        override === 'inherited' ? undefined : { signal: override === 'null' ? null : explicit.signal },
       )
 
       expect(native.mock.calls[0][0]).toBe(request)
-      expect(native.mock.calls[0][1]?.signal).toBe(
-        override === 'inherited' ? request.signal : override === 'null' ? null : explicitSignal,
-      )
+      const childSignal = native.mock.calls[0][1]?.signal
+      expect(childSignal).toBeInstanceOf(AbortSignal)
+      expect(childSignal).not.toBe(request.signal)
+      expect(childSignal).not.toBe(explicit.signal)
       expect(native.mock.calls[0][1]?.maxRedirections).toBe(0)
+      inherited.abort()
+      expect(childSignal?.aborted).toBe(override === 'inherited')
+      explicit.abort()
+      expect(childSignal?.aborted).toBe(override !== 'null')
+      await response.body!.cancel()
     },
   )
 
@@ -295,7 +279,6 @@ describe('createProxyFetch — native request boundaries', () => {
     const proxyFetch = createProxyFetch({
       cloudUrl: 'https://backend.example/v1',
       isStandalone: () => true,
-      getNativeFetchCapability: async () => true,
       tauriFetch: async () => {
         controller.abort()
         throw new Error('Request cancelled')
@@ -310,7 +293,7 @@ describe('createProxyFetch — native request boundaries', () => {
     await expect(pending).rejects.toBe(controller.signal.reason)
   })
 
-  it('normalizes cancelled native bodies to AbortError and preserves other stream errors', async () => {
+  it("normalizes native body failures and preserves the caller's abort reason", async () => {
     for (const aborted of [false, true]) {
       const controller = new AbortController()
       let bodyController!: ReadableStreamDefaultController<Uint8Array>
@@ -323,7 +306,6 @@ describe('createProxyFetch — native request boundaries', () => {
       const proxyFetch = createProxyFetch({
         cloudUrl: 'https://backend.example/v1',
         isStandalone: () => true,
-        getNativeFetchCapability: async () => true,
         tauriFetch: async () => new Response(upstream, { status: 201, headers: { 'x-provider': 'value' } }),
       })
       const response = await proxyFetch('https://provider.example', { signal: controller.signal })
@@ -336,7 +318,15 @@ describe('createProxyFetch — native request boundaries', () => {
         controller.abort()
       }
       bodyController.error('Request cancelled')
-      await expect(reader.read()).rejects.toBe(aborted ? controller.signal.reason : 'Request cancelled')
+      if (aborted) {
+        await expect(reader.read()).rejects.toBe(controller.signal.reason)
+      } else {
+        await expect(reader.read()).rejects.toMatchObject({
+          name: 'TypeError',
+          message: 'Failed to fetch',
+          cause: 'Request cancelled',
+        })
+      }
     }
   })
 
@@ -346,14 +336,17 @@ describe('createProxyFetch — native request boundaries', () => {
     const proxyFetch = createProxyFetch({
       cloudUrl: 'https://backend.example/v1',
       isStandalone: () => true,
-      getNativeFetchCapability: async () => true,
       tauriFetch: async () => {
         throw failure
       },
       fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
     })
 
-    await expect(proxyFetch('https://provider.example')).rejects.toBe(failure)
+    await expect(proxyFetch('https://provider.example')).rejects.toMatchObject({
+      name: 'TypeError',
+      message: 'Failed to fetch',
+      cause: failure,
+    })
     expect(hosted).not.toHaveBeenCalled()
   })
 
@@ -370,13 +363,12 @@ describe('createProxyFetch — native request boundaries', () => {
     const proxyFetch = createProxyFetch({
       cloudUrl: 'https://backend.example/v1',
       isStandalone: () => true,
-      getNativeFetchCapability: async () => true,
       tauriFetch: async () => response,
       fetchImpl: Object.assign(async () => new Response('unexpected backend'), { preconnect: fetch.preconnect }),
     })
     try {
       const result = await proxyFetch('https://provider.example')
-      expect(result).toBe(response)
+      expect(result.status).toBe(response.status)
       expect(await result.json()).toEqual(body)
       expect(events).toHaveLength(0)
       expect(isAppVersionBlocked()).toBe(false)
@@ -391,7 +383,7 @@ describe('createProxyFetch — proxy_enabled toggle', () => {
   afterEach(() => localStorage.removeItem('proxy_enabled'))
 
   it.each([null, 'false'])(
-    'Tauri with stored %s defaults to native HTTP and never calls the backend',
+    'Tauri with stored %s defaults to native HTTP and switches to the backend when the proxy is enabled',
     async (stored) => {
       localStorage.removeItem('proxy_enabled')
       if (stored !== null) {
@@ -403,7 +395,6 @@ describe('createProxyFetch — proxy_enabled toggle', () => {
       const proxyFetch = createProxyFetch({
         cloudUrl: 'https://backend.example/v1',
         isStandalone: () => true,
-        getNativeFetchCapability: async () => true,
         tauriFetch: native,
         fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
         getProxyAuthToken: auth,
@@ -681,5 +672,136 @@ describe('createProxyFetch — session rejected', () => {
     await proxyFetch('https://mcp.example.com/', { method: 'POST' })
 
     expect(dispatchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('createProxyFetch — native plugin failures and lifecycle', () => {
+  const directFetch = (tauriFetch: NonNullable<Parameters<typeof createProxyFetch>[0]['tauriFetch']>) =>
+    createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => true,
+      getProxyEnabled: () => false,
+      tauriFetch,
+    })
+
+  it('normalizes plugin-string request failures to network errors', async () => {
+    const native = directFetch(async () => {
+      throw 'connection refused'
+    })
+    await expect(native('https://provider.example')).rejects.toMatchObject({
+      name: 'TypeError',
+      message: 'Failed to fetch',
+      cause: 'connection refused',
+    })
+  })
+
+  it('normalizes plugin-string body failures even without a caller signal', async () => {
+    const native = directFetch(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error('body read failed')
+            },
+          }),
+        ),
+    )
+    const response = await native('https://provider.example')
+    await expect(response.body!.getReader().read()).rejects.toMatchObject({
+      name: 'TypeError',
+      message: 'Failed to fetch',
+      cause: 'body read failed',
+    })
+  })
+
+  it.each(['null', 'eof', 'rejection', 'stream error', 'cancel'] as const)(
+    'detaches the session-signal relay after %s across repeated requests',
+    async (outcome) => {
+      const caller = new AbortController()
+      const added = spyOn(caller.signal, 'addEventListener')
+      const removed = spyOn(caller.signal, 'removeEventListener')
+      const native = directFetch(async (_input, init) => {
+        // Model the plugin's anonymous listeners, which it never removes.
+        init?.signal?.addEventListener('abort', () => {})
+        if (outcome === 'rejection') {
+          throw 'connection refused'
+        }
+        if (outcome === 'null') {
+          return new Response(null, { status: 204 })
+        }
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              if (outcome === 'stream error') {
+                controller.error('read failed')
+                return
+              }
+              controller.enqueue(new TextEncoder().encode('chunk'))
+              if (outcome === 'eof') {
+                controller.close()
+              }
+            },
+          }),
+          { status: 201, statusText: 'Created', headers: { 'x-provider': 'value' } },
+        )
+      })
+      try {
+        for (const _ of [1, 2, 3]) {
+          if (outcome === 'rejection') {
+            await expect(native('https://provider.example', { signal: caller.signal })).rejects.toBeDefined()
+            continue
+          }
+          const response = await native('https://provider.example', { signal: caller.signal })
+          if (outcome === 'cancel') {
+            await response.body!.cancel()
+            continue
+          }
+          if (outcome === 'stream error') {
+            await expect(response.text()).rejects.toBeDefined()
+            continue
+          }
+          expect(await response.text()).toBe(outcome === 'eof' ? 'chunk' : '')
+          if (outcome === 'eof') {
+            expect(response.status).toBe(201)
+            expect(response.statusText).toBe('Created')
+            expect(response.headers.get('x-provider')).toBe('value')
+          }
+        }
+        expect(added.mock.calls.length - removed.mock.calls.length).toBe(0)
+        for (const [index, call] of added.mock.calls.entries()) {
+          expect(removed.mock.calls[index]?.[1]).toBe(call[1])
+        }
+      } finally {
+        added.mockRestore()
+        removed.mockRestore()
+      }
+    },
+  )
+
+  it('rejects with the abort reason and cancels a body returned after abort', async () => {
+    const caller = new AbortController()
+    const pending = Promise.withResolvers<Response>()
+    const cancel = mock(() => {})
+    const entered = Promise.withResolvers<void>()
+    const native = directFetch(async () => {
+      entered.resolve()
+      return pending.promise
+    })
+    const response = new Response(new ReadableStream({ cancel }))
+    const result = native('https://provider.example', { signal: caller.signal })
+    await entered.promise
+    const reason = new Error('session closed')
+    caller.abort(reason)
+    pending.resolve(response)
+    await expect(result).rejects.toBe(reason)
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves the native response URL with a wrapped streaming body', async () => {
+    const upstream = new Response('chunks')
+    Object.defineProperty(upstream, 'url', { value: 'https://provider.example/final' })
+    const response = await directFetch(async () => upstream)('https://provider.example')
+    expect(response.url).toBe('https://provider.example/final')
+    expect(await response.text()).toBe('chunks')
   })
 })
