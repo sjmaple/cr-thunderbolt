@@ -78,6 +78,25 @@ describe('createProxyFetch — Hosted mode', () => {
     }
   })
 
+  it('honors signal: null on an already aborted Request on the hosted hop', async () => {
+    const caller = new AbortController()
+    caller.abort()
+    const requests: Request[] = []
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => false,
+      fetchImpl: Object.assign(
+        async (input: RequestInfo | URL) => {
+          requests.push(input as Request)
+          return new Response('ok')
+        },
+        { preconnect: fetch.preconnect },
+      ),
+    })
+    await proxyFetch(new Request('https://provider.example', { signal: caller.signal }), { signal: null })
+    expect(requests[0].signal.aborted).toBe(false)
+  })
+
   it('unwraps X-Proxy-Passthrough-* response headers into normal-looking headers', async () => {
     const fakeFetch = (async () =>
       new Response('ok', {
