@@ -17,7 +17,6 @@ import { PasskeyEnrollStep } from './passkey-enroll-step'
 import { usePasskeyAvailable } from '@/lib/passkey'
 import { GradientCircleCheck } from '@/components/ui/gradient-circle-check'
 import { IconCircle } from '@/components/onboarding/icon-circle'
-import { showRevokedDeviceModalEvent } from '@/hooks/use-credential-events'
 import { useYieldToMigration } from '@/hooks/use-yield-to-migration'
 import { ArrowLeft, Loader2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
@@ -129,8 +128,8 @@ export const SyncSetupModal = ({ open, onOpenChange, onComplete }: SyncSetupModa
   }
 
   const handleRevoked = () => {
+    // The HttpClient has already turned the 403 into the revocation reset; just get out of its way.
     onOpenChange(false)
-    window.dispatchEvent(new CustomEvent(showRevokedDeviceModalEvent))
   }
 
   const handleDenied = () => {
