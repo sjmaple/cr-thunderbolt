@@ -195,6 +195,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
   const isFullUser = isAuthenticated && !isAnonymous
   const { openSignInModal } = useSignInModal()
   const runningInTauri = isStandalone()
+  const [tooltipOpen, setTooltipOpen] = useState(false)
   const [proxyEnabledStr, setProxyEnabledStr] = useLocalStorage('proxy_enabled', 'false')
   const effectiveProxyEnabled = computeEffectiveProxyEnabled(
     () => runningInTauri,
@@ -1017,7 +1018,7 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
               </Trans>
             </p>
           </div>
-          <Tooltip>
+          <Tooltip open={proxyDisabled && tooltipOpen} onOpenChange={setTooltipOpen}>
             <TooltipTrigger asChild>
               <span
                 tabIndex={proxyDisabled ? 0 : undefined}

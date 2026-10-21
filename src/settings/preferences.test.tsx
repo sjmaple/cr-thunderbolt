@@ -120,6 +120,33 @@ describe('PreferencesSettingsPage — cloud proxy switch', () => {
     localStorage.removeItem('proxy_enabled')
   })
 
+  it('never describes the enabled Cloud Proxy switch with missing tooltip content', async () => {
+    renderPage(createMockAuthClient({ session: authedSession }), () => true)
+    const toggle = screen.getByRole('switch', { name: 'Use Cloud Proxy' })
+    await act(async () => {
+      toggle.focus()
+      fireEvent.pointerMove(toggle.parentElement!, { pointerType: 'mouse' })
+      await getClock().tickAsync(1000)
+    })
+    expect(toggle).not.toHaveAttribute('aria-describedby')
+    expect(toggle.parentElement).not.toHaveAttribute('aria-describedby')
+  })
+
+  it('describes the disabled Cloud Proxy wrapper with existing tooltip content', async () => {
+    renderPage(createMockAuthClient({ session: null }))
+    const toggle = screen.getByRole('switch', { name: 'Use Cloud Proxy' })
+    const wrapper = toggle.parentElement!
+    await act(async () => {
+      wrapper.focus()
+      await getClock().tickAsync(1000)
+    })
+    const description = wrapper.getAttribute('aria-describedby')
+    expect(description).toBeTruthy()
+    expect(document.getElementById(description!)).toHaveTextContent(
+      'Proxying is required in the web app to bypass browser CORS restrictions.',
+    )
+  })
+
   it('shows persisted ON, allows signed-out OFF, and gates enabling without changing web routing', () => {
     localStorage.setItem('proxy_enabled', 'true')
     const signedOut = renderPage(createMockAuthClient({ session: null }), () => true)
