@@ -93,7 +93,7 @@ describe('model catalog policy', () => {
       ],
       [{ provider: 'openai', apiKey: 'sk-test' }, 'https://api.openai.com/v1/models'],
       [{ provider: 'openrouter', apiKey: 'sk-test' }, 'https://openrouter.ai/api/v1/models'],
-    ])('routes the %o catalog through the universal proxy', async (request, endpoint) => {
+    ])('routes the %o catalog through the supplied transport', async (request, endpoint) => {
       const proxyFetch = stubProxyFetch()
       await fetchModelsForProvider(request, () => proxyFetch)
 

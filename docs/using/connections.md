@@ -68,7 +68,7 @@ Desktop and mobile connect to HTTP/SSE MCP servers directly by default. **Settin
 
 The add form checks whether the device could reach the address: plain `http://` is allowed only for loopback and private addresses; public hosts require `https://`. Saving an address does not prove the backend can reach it.
 
-Native GET requests do not follow redirects, so credentials never follow a redirect. A signed-out user with Cloud Proxy on gets backend 401s until they turn it off or sign in. ACP WebSockets stay direct on native apps regardless of the switch.
+For direct connections in desktop and mobile, enter the server's final address. If requests through Use Cloud Proxy fail because you are signed out, sign in. In desktop and mobile, you can also turn off Use Cloud Proxy. External agents added with a WebSocket address connect directly in desktop and mobile, regardless of Use Cloud Proxy.
 
 ### Local servers
 
@@ -116,7 +116,7 @@ The built-in assistant needs no setup and appears under **Your agents**, marked 
 
 **Settings → Agents → New Agent.** The URL is either a WebSocket endpoint (`wss://example.com/ws`) or a pairing ticket from a bridge; a bare peer identity also works if the peer is discoverable. A WebSocket endpoint must pass **Test connection** before it can be saved. A peer-to-peer target is verified on the first chat instead, because it has to be authorized on the bridge first.
 
-Test connection always dials directly from the device. A passing test proves the endpoint is alive, not that the path a saved agent takes on web will work. Native apps keep ACP WebSockets direct regardless of Cloud Proxy. A loopback agent is reachable only from the device running it; the web relay refuses it. Use a peer-to-peer bridge for everything else.
+Test connection always dials directly from the device. A passing test proves the endpoint is alive, not that the path a saved agent takes on web will work. External agents added with a WebSocket address connect directly in desktop and mobile, regardless of Use Cloud Proxy. A loopback agent is reachable only from the device running it; the web relay refuses it. Use a peer-to-peer bridge for everything else.
 
 Custom agents sync to your other devices, name, URL and description together.
 
@@ -175,9 +175,9 @@ Web search and page fetching need `EXA_API_KEY` on the server. Without it the sw
 
 MCP tool calls are not approved one by one. Once a server is connected and enabled, its tools run whenever the model calls them, and your control is at the server level: enable, disable, delete. External agents work the other way round. An ACP agent asks before it edits a file or runs a command, and each request prompts in the chat until you choose one of the always-allow buttons.
 
-Stored credentials never reach the model, and are never part of the conversation. For an `http` or `sse` server the credential does transit your deployment's relay, which forwards it untouched and stores nothing; only a peer-to-peer bridge is end to end.
+Stored credentials never reach the model, and are never part of the conversation. For HTTP/SSE connections, your credential passes through your Thunderbolt server only in the web app or when Use Cloud Proxy is on in desktop and mobile. With Use Cloud Proxy off in desktop and mobile, it goes directly to the tool server.
 
-Native apps can reach private addresses directly for own-key models and HTTP/SSE MCP servers with Cloud Proxy off, and for ACP WebSockets regardless of the switch. The browser and native HTTP/SSE calls with Cloud Proxy on use the backend relay, which refuses private and internal addresses. Custom loopback models always stay device-direct.
+Desktop and mobile can connect directly to custom model servers and HTTP/SSE MCP servers at private addresses when Use Cloud Proxy is off, and to external agents added with a WebSocket address regardless of Use Cloud Proxy. The web app, and desktop and mobile HTTP/SSE requests with Use Cloud Proxy on, use your Thunderbolt server, which blocks private and internal addresses. Custom loopback models always connect directly from the device.
 
 The agent the Thunderbolt command-line tool serves is confined to the directory the bridge was launched from and everything below it, ignores any working directory the app sends, has no shell tool, and refuses to fetch loopback or private addresses. A bridged third-party agent enforces its own scope, and whether it can run shell commands is up to that agent.
 

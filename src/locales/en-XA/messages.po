@@ -2740,10 +2740,6 @@ msgstr ""
 msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
 msgstr ""
 
-#: src/settings/preferences.tsx
-#~ msgid "Off sends requests directly from this device. On routes requests through Thunderbolt's backend. Local (loopback) models always connect directly."
-#~ msgstr ""
-
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr ""

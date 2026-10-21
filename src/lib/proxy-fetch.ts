@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Universal proxy client. Hosted mode (web) routes cross-origin requests
+ * Universal proxy client. Hosted mode (web, or Tauri with Use Cloud Proxy on) routes cross-origin requests
  * through `${cloudUrl}/v1/proxy`, mapping caller headers to `X-Proxy-Passthrough-*`.
- * Standalone mode (Tauri) calls the upstream directly via Tauri's HTTP plugin.
+ * Standalone mode (Tauri with Use Cloud Proxy off) calls upstream via the native HTTP adapter.
  *
  * The helper hides the difference so call sites — AI SDKs, MCP transports,
  * favicon fetches — look like normal `fetch` calls.

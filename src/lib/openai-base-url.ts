@@ -10,8 +10,7 @@
  * baseURL with a trailing slash produces `//chat/completions` which some
  * servers reject. Applied in `resolveOpenAiCompatConnection`, which feeds the
  * legacy `createModel` path, the built-in Pi agent path and the settings
- * `Load Models` catalog, and picks the transport (loopback → direct, everything
- * else → proxy).
+ * `Load Models` catalog, and picks the transport (loopback → direct; other URLs → native HTTP on Tauri with Use Cloud Proxy off, otherwise proxy).
  */
 export const normalizeOpenAiBaseUrl = (raw: string): string => {
   const trimmed = raw.trim().replace(/\/+$/, '')

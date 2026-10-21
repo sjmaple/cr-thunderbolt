@@ -110,8 +110,8 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     shouldClearNavigationState,
   } = state
 
-  // Web OAuth discovery/exchange share the universal proxy fetch the transport
-  // uses, so SSRF stays covered by `/v1/proxy` and the path matches production.
+  // OAuth discovery/exchange share the transport's platform/toggle-aware fetch;
+  // hosted requests use `/v1/proxy` and its SSRF checks.
   const buildOAuthFetch = () =>
     createProxyFetch({
       cloudUrl,

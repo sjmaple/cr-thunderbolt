@@ -130,9 +130,9 @@ Requests are relayed by your API service so the browser can reach providers that
 
 Desktop and mobile send provider requests directly from the device by default, using native HTTP. Turning on **Settings → Preferences → Network → Use Cloud Proxy** opts into relaying them through your API service. The switch is always on and greyed out in the browser. Custom loopback models always connect directly on every platform.
 
-**Upgrade note:** Upgrading the desktop or mobile app restores direct routing for own-key model and HTTP/SSE MCP requests when **Settings → Preferences → Network → Use Cloud Proxy** is off or unset; earlier releases relayed these requests despite that setting. Providers then see the device's egress IP. Deployments that require backend egress should have users enable **Use Cloud Proxy**. An existing enabled setting stays enabled.
+**Upgrade note:** Upgrading the desktop or mobile app enables direct routing for own-key model and HTTP/SSE MCP requests when **Settings → Preferences → Network → Use Cloud Proxy** is off or unset; earlier releases relayed these requests despite that setting. Providers then see the device's egress IP. Deployments that require backend egress should have users enable **Use Cloud Proxy**. An existing enabled setting stays enabled.
 
-Native GET requests do not follow redirects, so credentials never follow a redirect. A signed-out user with Cloud Proxy on gets backend 401s until they turn it off or sign in.
+For direct connections in desktop and mobile, enter the server's final address. If requests through Use Cloud Proxy fail because you are signed out, sign in. In desktop and mobile, you can also turn off Use Cloud Proxy.
 
 Adding a model requires a successful **Test Connection** first. The only exception is the deployment-provided models, which have nothing for the user to verify.
 
@@ -153,7 +153,7 @@ http://localhost:1234/v1    LM Studio
 | Public address over HTTPS                                                          | Works, relayed by your API service                                                                          | Works                              |
 | A private LAN address, or `host.docker.internal`                                   | Blocked. The relay refuses private and internal addresses, and browsers block plain HTTP from an HTTPS page | Works with **Use Cloud Proxy** off |
 
-Anything that is not on the user's own machine is dialled over HTTPS whether or not the user typed `https://`, so an HTTP-only endpoint on a public address will not work.
+Public `http://` model addresses are upgraded to `https://`, so an HTTP-only endpoint on a public address will not work. Direct connections in desktop and mobile keep plain HTTP for local and private addresses, including link-local and IPv4-mapped private addresses, `host.docker.internal`, `.local` and `*.localhost` names. Other hostnames are upgraded even if split DNS resolves them to a private address.
 
 No server setting points the whole deployment at one OpenAI-compatible endpoint. Each user adds it themselves, or you publish the endpoint on an HTTPS address they can all reach. A LAN-only model server cannot be reached from the web app at all. We recommend putting it behind HTTPS on a resolvable name; failing that, have the team use the desktop app.
 

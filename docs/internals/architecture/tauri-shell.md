@@ -26,7 +26,6 @@ Everything else goes through an official plugin.
 | Command                   | Platforms                                 | Purpose                                                                                                   | Frontend caller                                                                                                                                                                              |
 | ------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `toggle_dock_icon`        | macOS (no-op else)                        | Switches activation policy between `Regular` and `Accessory`, so hiding to the tray removes the dock icon | [`src/lib/tray.tsx`](../../../src/lib/tray.tsx)                                                                                                                                              |
-| `capabilities`            | all                                       | Returns `{ native_fetch }`. See [native HTTP](#native-http).                                              | [`src/lib/platform.ts`](../../../src/lib/platform.ts)                                                                                                                                        |
 | `set_interface_style`     | iOS (no-op else)                          | Sets `overrideUserInterfaceStyle` on every window scene so keyboard and system UI follow the app theme    | [`src/lib/theme-provider.tsx`](../../../src/lib/theme-provider.tsx)                                                                                                                          |
 | `start_oauth_server`      | desktop (mobile signs in over deep links) | Binds the loopback listener and returns the port                                                          | [`oauth-loopback.ts`](../../../src/lib/oauth-loopback.ts), [`sso-loopback.ts`](../../../src/lib/sso-loopback.ts), [`mcp-oauth-loopback.ts`](../../../src/lib/mcp-auth/mcp-oauth-loopback.ts) |
 | `install_thunderbolt_cli` | macOS arm64, Linux                        | One-click install of the prebuilt CLI into `~/.local/bin`                                                 | [`src/lib/cli-install.ts`](../../../src/lib/cli-install.ts)                                                                                                                                  |
@@ -156,22 +155,17 @@ deep-link and updater config.
 
 ## Native HTTP
 
-`tauri-plugin-http` is registered unconditionally on desktop and mobile, and `capabilities()`
-reports `native_fetch: true`. Its `cookies` feature is disabled so it has no persisted cookie jar;
-HTTP/2, charset handling and macOS system proxy configuration remain enabled. TLS verification
+`tauri-plugin-http` is registered unconditionally on desktop and mobile. Its `cookies` feature
+is disabled so it has no persisted cookie jar; HTTP/2, charset handling and macOS system proxy configuration remain enabled. TLS verification
 uses both OS certificates and bundled public roots (Android can have an empty native store).
 
 `createProxyFetch` reads `proxy_enabled` for each request. OFF (or absent) sends provider traffic
-directly from the device; ON opts into the backend universal proxy. A missing native capability
-raises `NativeHttpUnavailableError` with instructions to update the app or enable Cloud Proxy,
-and native failures never retry through the backend. Native requests, including GET, disable
-redirects so credentials never follow a redirect. A signed-out user with Cloud Proxy on gets
-backend 401s until they turn it off or sign in. ACP WebSockets stay direct on Tauri regardless of
+directly from the device; ON opts into the backend universal proxy. Native failures never retry
+through the backend. See [native redirect policy](universal-proxy.md#hosted-and-standalone). A signed-out
+user with Cloud Proxy on gets backend 401s until they turn it off or sign in. ACP WebSockets stay direct on Tauri regardless of
 the toggle, and Tinfoil uses its attested client.
 
-Custom loopback models keep their device-direct webview fetch path. The separate **Use Native
-Fetch** dev preference still controls `src/lib/fetch.ts`, which re-checks the capability before
-invoking the plugin.
+Custom loopback models connect directly through `src/lib/fetch.ts`: browser fetch by default, or native HTTP on Tauri when Use Native Fetch is on.
 
 ## Platform detection in the frontend
 
@@ -208,15 +202,10 @@ says anything about the viewport.
   `navigator`, so a bun test with no DOM gets the web/false answer. The hooks do need one:
   `useIsMobile` reads `window.matchMedia` through `useSyncExternalStore`.
 
-### Capabilities and the database type
-
-`getCapabilities()` is async because it must `invoke('capabilities')`. Successful probes are cached
-per page; failed probes resolve to `{ native_fetch: false }` and are retried on the next call.
-Off Tauri it always returns `{ native_fetch: false }`. With Cloud Proxy off, `createProxyFetch` fails explicitly on a missing native
-capability instead of sending the request through the backend.
+### The database type
 
 `getDatabaseType()` unconditionally returns `'powersync'`
-([`src/lib/platform.ts:272`](../../../src/lib/platform.ts#L272)) and both callers
+([`src/lib/platform.ts:240`](../../../src/lib/platform.ts#L240)) and both callers
 ([`use-app-initialization.ts`](../../../src/hooks/use-app-initialization.ts),
 [`src/lib/fs.ts`](../../../src/lib/fs.ts)) feed it straight into `getDatabasePath`, so that function's
 `bun-sqlite` branch is dead. The `bun-sqlite` type survives for bun tests, which build a `Database`

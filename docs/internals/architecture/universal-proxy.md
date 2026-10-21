@@ -235,8 +235,8 @@ Four entry points, not interchangeable:
 | Use it for                                       | Entry point                                                                                                                                                                                      |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | An authenticated call to our own backend         | `useHttpClient()` ([src/contexts/http-client-context.tsx](../../../src/contexts/http-client-context.tsx)), or `createAuthenticatedClient` ([src/lib/http.ts:185](../../../src/lib/http.ts#L185)) |
-| An external API with no app headers or auth      | `http` ([src/lib/http.ts:252](../../../src/lib/http.ts#L252))                                                                                                                                    |
-| Own-key model inference/catalogs or MCP HTTP/SSE | `useFetch()` / `useProxyFetchGetter()` ([src/lib/proxy-fetch-context.tsx](../../../src/lib/proxy-fetch-context.tsx))                                                                             |
+| An external API with no app headers or auth      | `http` ([src/lib/http.ts:267](../../../src/lib/http.ts#L267))                                                                                                                                    |
+| Own-key model inference/catalogs or MCP HTTP/SSE | `useFetch()` / `useProxyFetchGetter()` (React), `createProxyFetch()` (non-React) ([src/lib/proxy-fetch-context.tsx](../../../src/lib/proxy-fetch-context.tsx))                                   |
 | A loopback model that must stay device-direct    | `fetch` from [src/lib/fetch.ts](../../../src/lib/fetch.ts)                                                                                                                                       |
 
 - **`createAuthenticatedClient` is the only path** injecting `X-Device-ID`, `X-Device-Name`,
@@ -247,9 +247,9 @@ Four entry points, not interchangeable:
   response hooks sit behind an origin-and-prefix guard (`isBackendRequest`), so the same client can
   call an external API without leaking identity headers or misreading a 401 as an expired session.
   The bearer is attached regardless of origin, and a caller-set `Authorization` is left alone.
-- **`src/lib/fetch.ts` is the Tauri-aware escape hatch.** It honours the "Use Native Fetch" dev
-  setting and re-checks the `native_fetch` capability before invoking the plugin, so a stale `true`
-  cannot call an unregistered plugin.
+- **`src/lib/fetch.ts` is the Tauri-aware escape hatch.** It uses browser fetch by default, or
+  the shared native adapter on Tauri when the "Use Native Fetch" dev setting is on. Native HTTP
+  is registered unconditionally.
 
 ### Hosted and Standalone
 
@@ -261,11 +261,15 @@ Four entry points, not interchangeable:
 - **Standalone** sends directly from the device through Tauri's HTTP plugin when the setting is
   OFF or absent. Native HTTP ships on every Tauri build, without a persisted cookie jar,
   and trusts OS certificates alongside bundled public roots.
-  A missing capability throws `NativeHttpUnavailableError` with instructions to update the app
-  or enable Cloud Proxy. Native failures propagate without a backend retry.
-- **Native redirects, including GET, are disabled** (`maxRedirections: 0`) because reqwest retains provider-specific
-  credentials such as `x-api-key` across redirects. This does not change hosted redirect handling.
-  A `Request` input's signal is passed explicitly to the native shim; `init.signal` takes precedence.
+  Native failures propagate without a backend retry. Public `http:` targets are upgraded to
+  `https:`; local/private IPs, `host.docker.internal`, `.local` and `*.localhost` names keep HTTP.
+  Arbitrary split-DNS private FQDNs are upgraded too; the hosted proxy also upgraded and SSRF-blocked them.
+- **Native requests never follow redirects, for all methods** (`maxRedirections: 0`), because
+  reqwest retains provider-specific credentials such as `x-api-key` across redirects. Enter the
+  final endpoint URL. Hosted redirect handling is unchanged. Both native entry points use
+  `src/lib/native-fetch.ts`, which normalizes plugin request/body failures to `TypeError('Failed to fetch')`
+  and relays cancellation through a per-request child signal. `init.signal` takes precedence over
+  a `Request` signal, including explicit `null`; completion, failure and cancellation detach the relay.
 - **Custom loopback models always stay device-direct** through `src/lib/fetch.ts`, on web and Tauri.
   ACP WebSockets stay Tauri-direct even with Cloud Proxy on; Tinfoil keeps its attested client.
 
@@ -290,7 +294,7 @@ or sign in.
 Upstream status codes are relayed verbatim, so a provider answering `426 Upgrade Required` looks
 exactly like our version gate and acting on the status would blank the whole app. Only our gate
 pairs 426 with an `APP_VERSION_UNSUPPORTED` body code, so that code is the discriminator
-([src/lib/proxy-fetch.ts:152-163](../../../src/lib/proxy-fetch.ts#L152)); the check reads a clone, so
+([src/lib/proxy-fetch.ts](../../../src/lib/proxy-fetch.ts)); the check reads a clone, so
 the body still reaches the caller intact. On the direct-to-backend path in `src/lib/http.ts` the
 status _is_ sufficient: no upstream to confuse it with. Native provider responses never run
 backend session-rejection or upgrade handling, even if their 401/426 bodies imitate backend codes.

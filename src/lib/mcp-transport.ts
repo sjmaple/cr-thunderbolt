@@ -14,7 +14,7 @@ import { createMcpIrohTransport } from './mcp-iroh-transport'
 import { createProxyFetch } from './proxy-fetch'
 
 /** Remote transport kind. `iroh` dials a peer-to-peer CLI bridge by NodeId/ticket;
- *  http/sse hit a URL through the universal proxy. stdio (local) servers are
+ *  http/sse use `createProxyFetch`: direct on Tauri with Use Cloud Proxy off, proxied otherwise. stdio (local) servers are
  *  connected by THU-575, not here. */
 export type MCPTransportType = 'http' | 'sse' | 'iroh'
 
