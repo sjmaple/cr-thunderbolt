@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
-import { isPrivateOrInternalAddress, parseIpAddress } from '@shared/ip-classification'
+import { isLocalNetworkAddress, parseIpAddress } from '@shared/ip-classification'
 
 /** Upgrade public HTTP targets while allowing device-local HTTP servers. */
 const upgradeNativeTarget = (input: RequestInfo | URL): RequestInfo | URL => {
@@ -14,7 +14,7 @@ const upgradeNativeTarget = (input: RequestInfo | URL): RequestInfo | URL => {
   const host = url.hostname.replace(/\.$/, '')
   const ip = parseIpAddress(host)
   if (
-    (ip && isPrivateOrInternalAddress(ip)) ||
+    (ip && isLocalNetworkAddress(ip)) ||
     host === 'localhost' ||
     host.endsWith('.localhost') ||
     host === 'host.docker.internal' ||

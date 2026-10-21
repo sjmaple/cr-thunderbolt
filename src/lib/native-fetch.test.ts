@@ -5,23 +5,26 @@
 import { expect, it } from 'bun:test'
 import { nativeFetch } from './native-fetch'
 
-it.each(['string', 'URL', 'Request'] as const)(
-  'upgrades public HTTP %s inputs with method, headers and body intact',
-  async (kind) => {
-    const url = 'http://api.example.com:8080/v1/messages?q=one'
-    const init = { method: 'POST', headers: { 'x-api-key': 'provider-key' }, body: 'payload' }
-    const input = kind === 'string' ? url : kind === 'URL' ? new URL(url) : new Request(url, init)
-    const sent: Request[] = []
-    await nativeFetch(input, kind === 'Request' ? undefined : init, async (input, options) => {
-      sent.push(new Request(input, options))
-      return new Response(null, { status: 204 })
-    })
-    expect(sent[0].url).toBe('https://api.example.com:8080/v1/messages?q=one')
-    expect(sent[0].method).toBe('POST')
-    expect(sent[0].headers.get('x-api-key')).toBe('provider-key')
-    expect(await sent[0].text()).toBe('payload')
-  },
-)
+it.each(
+  [
+    'http://api.example.com:8080/v1/messages?q=one',
+    'http://[2002:c000:0204::1]/',
+    'http://[2001:0::1]/',
+    'http://192.88.99.1/',
+  ].flatMap((url) => (['string', 'URL', 'Request'] as const).map((kind) => [kind, url] as const)),
+)('upgrades public HTTP %s input %s with method, headers and body intact', async (kind, url) => {
+  const init = { method: 'POST', headers: { 'x-api-key': 'provider-key' }, body: 'payload' }
+  const input = kind === 'string' ? url : kind === 'URL' ? new URL(url) : new Request(url, init)
+  const sent: Request[] = []
+  await nativeFetch(input, kind === 'Request' ? undefined : init, async (input, options) => {
+    sent.push(new Request(input, options))
+    return new Response(null, { status: 204 })
+  })
+  expect(sent[0].url).toBe(new URL(url.replace('http:', 'https:')).href)
+  expect(sent[0].method).toBe('POST')
+  expect(sent[0].headers.get('x-api-key')).toBe('provider-key')
+  expect(await sent[0].text()).toBe('payload')
+})
 
 it.each([
   'localhost',
@@ -33,8 +36,12 @@ it.each([
   '192.168.1.2',
   '[fd00::1]',
   '[::ffff:192.168.1.2]',
+  '[::192.168.1.10]',
   '[fe80::1]',
   '169.254.1.2',
+  '100.64.0.1',
+  '0.0.0.0',
+  '[::]',
   'host.docker.internal',
   'server.local',
   'SERVER.LOCAL.',
