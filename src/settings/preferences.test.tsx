@@ -32,14 +32,14 @@ const authedSession = {
   user: { id: 'user-1', email: 'a@b.com', name: 'Alice', isAnonymous: false },
 }
 
-const renderPage = (authClient: AuthClient) => {
+const renderPage = (authClient: AuthClient, isStandalone = () => false) => {
   const TestProvider = createTestProvider({ authClient })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <TestProvider>
       <SignInModalProvider>{children}</SignInModalProvider>
     </TestProvider>
   )
-  return render(<PreferencesSettingsPage />, { wrapper: Wrapper })
+  return render(<PreferencesSettingsPage isStandalone={isStandalone} />, { wrapper: Wrapper })
 }
 
 describe('PreferencesSettingsPage — sync toggle gating', () => {
@@ -105,6 +105,55 @@ describe('PreferencesSettingsPage — sync toggle gating', () => {
     renderPage(authClient)
 
     expect(screen.getByText('Delete My Account')).toBeInTheDocument()
+  })
+})
+
+describe('PreferencesSettingsPage — cloud proxy switch', () => {
+  beforeAll(setupTestDatabase)
+  afterAll(teardownTestDatabase)
+  beforeEach(async () => {
+    await resetTestDatabase()
+    localStorage.removeItem('proxy_enabled')
+  })
+  afterEach(() => {
+    cleanup()
+    localStorage.removeItem('proxy_enabled')
+  })
+
+  it('shows persisted ON, allows signed-out OFF, and gates enabling without changing web routing', () => {
+    localStorage.setItem('proxy_enabled', 'true')
+    const signedOut = renderPage(createMockAuthClient({ session: null }), () => true)
+    const toggle = screen.getByRole('switch', { name: 'Use Cloud Proxy' })
+
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    expect(toggle).toBeEnabled()
+    toggle.focus()
+    fireEvent.click(toggle)
+    const disabledToggle = screen.getByRole('switch', { name: 'Use Cloud Proxy' })
+    expect(disabledToggle === toggle).toBe(true)
+    expect(disabledToggle).toHaveFocus()
+    expect(disabledToggle.getAttribute('aria-checked')).toBe('false')
+    expect(localStorage.getItem('proxy_enabled')).not.toBe('true')
+    expect(disabledToggle).toBeDisabled()
+    fireEvent.click(disabledToggle)
+    expect(localStorage.getItem('proxy_enabled')).not.toBe('true')
+    signedOut.unmount()
+
+    const signedIn = renderPage(createMockAuthClient({ session: authedSession }), () => true)
+    const authenticatedToggle = screen.getByRole('switch', { name: 'Use Cloud Proxy' })
+    expect(authenticatedToggle.getAttribute('aria-checked')).toBe('false')
+    expect(authenticatedToggle).toBeEnabled()
+    fireEvent.click(authenticatedToggle)
+    expect(localStorage.getItem('proxy_enabled')).toBe('true')
+    fireEvent.click(authenticatedToggle)
+    expect(localStorage.getItem('proxy_enabled')).not.toBe('true')
+    signedIn.unmount()
+
+    localStorage.setItem('proxy_enabled', 'false')
+    renderPage(createMockAuthClient({ session: null }))
+    const webToggle = screen.getByRole('switch', { name: 'Use Cloud Proxy' })
+    expect(webToggle.getAttribute('aria-checked')).toBe('true')
+    expect(webToggle).toBeDisabled()
   })
 })
 
