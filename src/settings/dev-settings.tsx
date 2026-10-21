@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { initialLocalSettings, useLocalSettingsStore } from '@/stores/local-settings-store'
 import { getCapabilities, isTauri } from '@/lib/platform'
 import { useQuery } from '@tanstack/react-query'
+import { Trans } from '@lingui/react/macro'
 import { useShallow } from 'zustand/react/shallow'
 
 export default function DevSettingsPage() {
@@ -97,8 +98,7 @@ export default function DevSettingsPage() {
               </TooltipTrigger>
               {!capabilities?.native_fetch && (
                 <TooltipContent sideOffset={4}>
-                  This feature is only available on some desktop versions of the app that were built with the
-                  native_fetch feature flag.
+                  <Trans>Native HTTP is unavailable in this shell. Update the app to use this setting.</Trans>
                 </TooltipContent>
               )}
             </Tooltip>

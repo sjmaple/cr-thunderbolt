@@ -2732,6 +2732,14 @@ msgstr "OAuth validation failed"
 msgid "Objects"
 msgstr "Objects"
 
+#: src/settings/preferences.tsx
+msgid "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
+msgstr "Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's backend. Local (loopback) models always connect directly."
+
+#: src/settings/preferences.tsx
+#~ msgid "Off sends requests directly from this device. On routes requests through Thunderbolt's backend. Local (loopback) models always connect directly."
+#~ msgstr "Off sends requests directly from this device. On routes requests through Thunderbolt's backend. Local (loopback) models always connect directly."
+
 #: src/components/sidebar-footer.tsx
 msgid "Offline. Changes will sync when back online."
 msgstr "Offline. Changes will sync when back online."
@@ -4700,8 +4708,8 @@ msgid "What's in it?"
 msgstr "What's in it?"
 
 #: src/settings/preferences.tsx
-msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
-msgstr "When enabled, requests are routed through Thunderbolt's cloud proxy."
+#~ msgid "When enabled, requests are routed through Thunderbolt's cloud proxy."
+#~ msgstr "When enabled, requests are routed through Thunderbolt's cloud proxy."
 
 #: src/skills/skill-form.tsx
 msgid "When to use this skill…"

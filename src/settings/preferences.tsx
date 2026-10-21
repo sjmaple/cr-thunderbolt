@@ -1011,7 +1011,10 @@ const PreferencesSettingsPage = ({ isStandalone = isTauri }: { isStandalone?: ()
               <Trans>Use Cloud Proxy</Trans>
             </label>
             <p className="text-sm text-muted-foreground">
-              <Trans>When enabled, requests are routed through Thunderbolt's cloud proxy.</Trans>
+              <Trans>
+                Off sends own-key model and MCP requests directly from this device. On routes them through Thunderbolt's
+                backend. Local (loopback) models always connect directly.
+              </Trans>
             </p>
           </div>
           <Tooltip>
