@@ -102,6 +102,31 @@ describe('model catalog policy', () => {
       expect(sent.headers.get('Authorization')).toBe('Bearer sk-test')
     })
 
+    it('routes the Anthropic catalog through the supplied transport with scoped credentials', async () => {
+      const requests: Request[] = []
+      const proxyFetch = Object.assign(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          requests.push(new Request(input, init))
+          return Response.json({ data: [{ id: 'claude-test', display_name: 'Claude Test' }] })
+        },
+        { preconnect: async () => false },
+      )
+
+      const webviewFetch = spyOn(globalThis, 'fetch').mockResolvedValue(catalogResponse())
+      try {
+        const models = await fetchModelsForProvider({ provider: 'anthropic', apiKey: 'own-key' }, () => proxyFetch)
+
+        expect(models).toEqual([{ id: 'claude-test', name: 'Claude Test', supports_tools: true }])
+        expect(requests[0].url).toBe('https://api.anthropic.com/v1/models?limit=1000')
+        expect(requests[0].headers.get('x-api-key')).toBe('own-key')
+        expect(requests[0].headers.get('authorization')).toBeNull()
+        expect(requests[0].headers.get('anthropic-version')).toBe('2023-06-01')
+        expect(requests[0].headers.get('anthropic-dangerous-direct-browser-access')).toBe('true')
+      } finally {
+        webviewFetch.mockRestore()
+      }
+    })
+
     it('keeps loopback custom endpoints off the proxy, like chat does', async () => {
       const proxyFetch = stubProxyFetch()
       const directFetch = spyOn(globalThis, 'fetch').mockResolvedValue(catalogResponse())

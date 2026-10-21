@@ -6,7 +6,6 @@ import type { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { resolveOpenAiCompatConnection } from '@/ai/fetch'
 import { getTinfoilClient } from '@/ai/tinfoil-client'
-import { fetch } from '@/lib/fetch'
 import { http } from '@/lib/http'
 import type { FetchFn } from '@/lib/proxy-fetch'
 import type { Model } from '@/types'
@@ -45,7 +44,7 @@ export const thunderboltModelCatalog: AvailableModel[] = defaultModels
 /** Anthropic's models endpoint is not OpenAI-compatible: auth is `x-api-key` (not a
  *  bearer), a version header is mandatory, and rows carry `display_name`. Listing
  *  requires the user's key, so the catalog is key-gated like OpenAI/OpenRouter. */
-const fetchAnthropicModels = async (apiKey: string): Promise<AvailableModel[]> => {
+const fetchAnthropicModels = async (apiKey: string, getProxyFetch: () => FetchFn): Promise<AvailableModel[]> => {
   const response = await http
     .get('https://api.anthropic.com/v1/models', {
       // The default page size is 20; 1000 is the documented maximum.
@@ -56,7 +55,7 @@ const fetchAnthropicModels = async (apiKey: string): Promise<AvailableModel[]> =
         // Anthropic rejects browser (CORS) requests without this opt-in header.
         'anthropic-dangerous-direct-browser-access': 'true',
       },
-      fetch,
+      fetch: getProxyFetch(),
     })
     .json<{ data: Array<{ id: string; display_name?: string }> }>()
   // The endpoint doesn't report tool support; every listed Claude model supports tools.
@@ -106,7 +105,7 @@ export const fetchModelsForProvider = async (
     return thunderboltModelCatalog
   }
   if (provider === 'anthropic') {
-    return apiKey ? fetchAnthropicModels(apiKey) : []
+    return apiKey ? fetchAnthropicModels(apiKey, getProxyFetch) : []
   }
   if (provider === 'tinfoil') {
     const client = await getTinfoilClient()
@@ -119,8 +118,8 @@ export const fetchModelsForProvider = async (
       .sort((left, right) => left.id.localeCompare(right.id))
   }
 
-  // Chat's connection, transport included: many OpenAI-compatible hosts never answer
-  // a browser preflight, so only the proxy can reach them (THU-1109).
+  // Reuse chat's transport: web needs the proxy for hosts that don't answer preflights;
+  // native follows the Cloud Proxy setting.
   const connection = resolveOpenAiCompatConnection(
     { provider, apiKey: apiKey ?? null, url: url ?? null },
     getProxyFetch,
