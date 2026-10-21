@@ -235,7 +235,7 @@ describe('add model form', () => {
     }
   })
 
-  it('keeps the model picker, with its Custom entry, when the catalog fails', async () => {
+  it('lets the user type a model id through the Custom entry when the catalog fails', async () => {
     const consoleError = spyOn(console, 'error').mockImplementation(() => {})
     const getSpy = spyOn(http, 'get').mockImplementation(() => {
       throw new TypeError('Load failed')
@@ -245,8 +245,9 @@ describe('add model form', () => {
       const page = useModelsPageState()
       return (
         <div>
+          <span data-testid="model-value">{page.addForm.form.watch('model')}</span>
           <button onClick={page.openAddPanel}>open</button>
-          <button onClick={() => page.addForm.onProviderChange('custom')}>select Custom</button>
+          <button onClick={() => page.addForm.onProviderChange('custom')}>use Custom provider</button>
           <button
             onClick={() => {
               page.addForm.form.setValue('url', 'https://api.example.com/v1', { shouldValidate: false })
@@ -263,15 +264,21 @@ describe('add model form', () => {
     try {
       renderWithReactivity(<FailingCatalogHarness />, { tables: ['models'] })
       fireEvent.click(screen.getByText('open'))
-      fireEvent.click(screen.getByText('select Custom'))
+      fireEvent.click(screen.getByText('use Custom provider'))
       fireEvent.click(screen.getByText('enter URL'))
 
       await act(async () => {
         await getClock().runAllAsync()
       })
-
       expect(screen.getByText(/Network request failed/)).toBeInTheDocument()
-      expect(screen.getByText('Select model…')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByText('Select model…'))
+      fireEvent.click(screen.getByRole('option', { name: 'Custom' }))
+      fireEvent.change(screen.getByPlaceholderText('e.g., gpt-4-turbo-preview'), {
+        target: { value: 'otari/some-model' },
+      })
+
+      expect(screen.getByTestId('model-value')).toHaveTextContent('otari/some-model')
     } finally {
       getSpy.mockRestore()
       consoleError.mockRestore()
