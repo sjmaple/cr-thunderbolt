@@ -15,7 +15,7 @@
  * The proxy-vs-native decision is inspected at the layer below `openTransport`
  * — we install a fake global `WebSocket` constructor and read what
  * `new WebSocket(url, protocols)` is called with. No `mock.module()` is
- * required (DI for `isStandalone` / `readProxyEnabled` / `getAuthToken`).
+ * required (DI for `isStandalone` / `getAuthToken`).
  */
 
 import '@/testing-library'
@@ -78,6 +78,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.WebSocket = originalWebSocket
+  localStorage.removeItem('proxy_enabled')
 })
 
 // A minimal HttpClient stub — its mere presence signals an authenticated cloud
@@ -97,7 +98,6 @@ describe('openTransport — agent-type routing', () => {
       agentType: 'managed-acp',
       signal: new AbortController().signal,
       isStandalone: () => false,
-      readProxyEnabled: () => null,
       httpClient: stubHttpClient,
       getAuthToken: () => 'token-abc',
     })
@@ -124,7 +124,6 @@ describe('openTransport — agent-type routing', () => {
       agentType: 'managed-acp',
       signal: new AbortController().signal,
       isStandalone: () => true,
-      readProxyEnabled: () => 'false',
       httpClient: stubHttpClient,
       getAuthToken: () => 'tauri-token-456',
     })
@@ -143,7 +142,6 @@ describe('openTransport — agent-type routing', () => {
       agentType: 'managed-acp',
       signal: new AbortController().signal,
       isStandalone: () => false,
-      readProxyEnabled: () => null,
     })
 
     expect(FakeBrowserSocket.instances).toHaveLength(1)
@@ -163,7 +161,6 @@ describe('openTransport — agent-type routing', () => {
       agentType: 'managed-acp',
       signal: new AbortController().signal,
       isStandalone: () => false,
-      readProxyEnabled: () => null,
       httpClient: stubHttpClient,
       getAuthToken: () => null,
     })
@@ -175,14 +172,18 @@ describe('openTransport — agent-type routing', () => {
     transport.close()
   })
 
-  it('remote-acp on Web routes through the universal proxy (subprotocol tunnel)', async () => {
+  it.each([null, 'false', 'true'])('remote-acp on Web with proxy setting %s uses the tunnel', async (stored) => {
+    if (stored === null) {
+      localStorage.removeItem('proxy_enabled')
+    } else {
+      localStorage.setItem('proxy_enabled', stored)
+    }
     const transport = await openTransport({
       url: 'wss://agent.example.com/acp',
       transport: 'websocket',
       agentType: 'remote-acp',
       signal: new AbortController().signal,
       isStandalone: () => false,
-      readProxyEnabled: () => null,
       // Browser WS can't attach `Authorization` headers — the proxy upgrade is
       // authenticated by the bearer token as a Sec-WebSocket-Protocol entry.
       httpClient: stubHttpClient,
@@ -200,21 +201,28 @@ describe('openTransport — agent-type routing', () => {
     transport.close()
   })
 
-  it('remote-acp on Tauri Standalone uses a native WebSocket (no proxy)', async () => {
-    const transport = await openTransport({
-      url: 'wss://agent.example.com/acp',
-      transport: 'websocket',
-      agentType: 'remote-acp',
-      signal: new AbortController().signal,
-      isStandalone: () => true,
-      readProxyEnabled: () => null,
-    })
+  it.each([null, 'false', 'true'])(
+    'remote-acp on Tauri with proxy setting %s uses a direct WebSocket',
+    async (stored) => {
+      if (stored === null) {
+        localStorage.removeItem('proxy_enabled')
+      } else {
+        localStorage.setItem('proxy_enabled', stored)
+      }
+      const transport = await openTransport({
+        url: 'wss://agent.example.com/acp',
+        transport: 'websocket',
+        agentType: 'remote-acp',
+        signal: new AbortController().signal,
+        isStandalone: () => true,
+      })
 
-    expect(FakeBrowserSocket.instances).toHaveLength(1)
-    const socket = FakeBrowserSocket.instances[0]
-    expect(socket.url).toBe('wss://agent.example.com/acp')
-    expect(socket.protocols.some((p) => p.startsWith(wsTargetPrefix))).toBe(false)
+      expect(FakeBrowserSocket.instances).toHaveLength(1)
+      const socket = FakeBrowserSocket.instances[0]
+      expect(socket.url).toBe('wss://agent.example.com/acp')
+      expect(socket.protocols.some((p) => p.startsWith(wsTargetPrefix))).toBe(false)
 
-    transport.close()
-  })
+      transport.close()
+    },
+  )
 })

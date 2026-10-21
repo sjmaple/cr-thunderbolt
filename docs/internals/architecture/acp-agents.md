@@ -133,7 +133,7 @@ from the agent type and the runtime, in order:
 | --- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `transport: 'iroh'` | Dials a peer bridge by NodeId or ticket. No URL, proxy, or bearer routing applies.                                                                                                                                                                                                                                                                                         |
 | 2   | `managed-acp`       | Always native to the URL. With an authenticated `httpClient` wired, the auth token rides as a `thunderbolt.bearer.<token>` entry in `Sec-WebSocket-Protocol` alongside the `thunderbolt.v1` carrier ([shared/ws-bearer.ts](../../../shared/ws-bearer.ts)); with no client wired (true Standalone, no backend reachable) it falls back to a direct unauthenticated connect. |
-| 3   | `remote-acp`        | `isStandaloneTransport` (Tauri **and** the proxy toggle off) selects a native `new WebSocket()`. Everything else is relayed through `createProxyWebSocket` ([src/lib/proxy-fetch.ts](../../../src/lib/proxy-fetch.ts)), which targets `${cloudUrl}/proxy/ws`.                                                                                                              |
+| 3   | `remote-acp`        | Tauri uses a direct `new WebSocket()` regardless of Use Cloud Proxy. Web is relayed through `createProxyWebSocket` ([src/lib/proxy-fetch.ts](../../../src/lib/proxy-fetch.ts)), which targets `${cloudUrl}/proxy/ws`.                                                                                                                                                      |
 
 - Rule 2 ignores the universal-proxy toggle: the endpoint is the cloud backend itself, and the
   toggle governs _external_ traffic. Tunnelling through `/v1/proxy/ws` breaks auth, because the
@@ -149,7 +149,7 @@ from the agent type and the runtime, in order:
   turns both verdicts into a bare HTTP 400.
 - The `wss` CLI bridge binds `127.0.0.1` and prints `ws://127.0.0.1:<port>/?token=…` as the URL to
   paste into the app.
-- **So a loopback bridge URL works on Tauri with the proxy off, and fails on web.**
+- **So a loopback bridge URL works on Tauri regardless of Use Cloud Proxy, and fails on web.**
 
 Both halves are correct: the relay is an SSRF control on a server that would otherwise dial
 anything, and the bridge is loopback because it spawns subprocesses. Nothing warns you at save time, and the form accepts `ws://` by design (LAN and dev
