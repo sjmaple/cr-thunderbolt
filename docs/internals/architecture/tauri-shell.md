@@ -111,6 +111,7 @@ build and fails in the app is almost always missing an entry there.
 - `remote.urls` permits `http://localhost:1420/*` because in dev Vite serves the frontend, which
   counts as remote content.
 - The `http:default` scope allows arbitrary HTTP/HTTPS hosts, ports and paths (including IPv6); no other schemes are allowed.
+  Accepted risk: scripts in the main webview can invoke CORS-free native HTTP directly and read any reachable public, loopback, private or link-local service, including metadata endpoints; Cloud Proxy and `createProxyFetch` are routing policy, not IPC security boundaries, and preview webviews are excluded.
 - **`devtools` needs a crypto provider first.** Its `reqwest`/rustls stack panics on its first HTTPS
   call on iOS dev builds with no process-default provider, so
   [`src-tauri/src/lib.rs:55`](../../../src-tauri/src/lib.rs#L55) installs

@@ -130,6 +130,8 @@ Requests are relayed by your API service so the browser can reach providers that
 
 Desktop and mobile send provider requests directly from the device by default, using native HTTP. Turning on **Settings → Preferences → Network → Use Cloud Proxy** opts into relaying them through your API service. The switch is always on and greyed out in the browser. Custom loopback models always connect directly on every platform.
 
+**Upgrade note:** Upgrading the desktop or mobile app restores direct routing for own-key model and HTTP/SSE MCP requests when **Settings → Preferences → Network → Use Cloud Proxy** is off or unset; earlier releases relayed these requests despite that setting. Providers then see the device's egress IP. Deployments that require backend egress should have users enable **Use Cloud Proxy**. An existing enabled setting stays enabled.
+
 Native GET requests do not follow redirects, so credentials never follow a redirect. A signed-out user with Cloud Proxy on gets backend 401s until they turn it off or sign in.
 
 Adding a model requires a successful **Test Connection** first. The only exception is the deployment-provided models, which have nothing for the user to verify.
