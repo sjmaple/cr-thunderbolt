@@ -756,6 +756,30 @@ describe('ChatPromptInput', () => {
     })
   })
 
+  describe.each([
+    [true, false],
+    [false, true],
+  ])('add menu, minimalMode: %s', (minimalMode, present) => {
+    beforeEach(() => {
+      useConfigStore.setState({ config: { minimalMode } })
+    })
+
+    afterEach(() => {
+      useConfigStore.setState({ config: {}, configLoaded: false })
+    })
+
+    it(`${present ? 'shows' : 'hides'} the add menu for an agent that takes no attachments`, () => {
+      const { mockUseChat } = setupStore()
+      useChatStore.getState().updateSession('thread-1', { selectedAgent: hostedAgent })
+      render(
+        <ChatPromptInput useChat={mockUseChat} useIsMobile={createMockUseIsMobile()} useWarmAcpCommands={noWarmUp} />,
+        { wrapper: TestWrapper },
+      )
+
+      expect(screen.queryByRole('button', { name: 'Add to chat' }) !== null).toBe(present)
+    })
+  })
+
   describe('clipboard paste', () => {
     type ClipboardItemInit = { kind: string; type: string; getAsFile: () => File | null }
 
