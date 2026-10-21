@@ -113,7 +113,7 @@ const buildHostedRequest = (proxyUrl: string, input: RequestInfo | URL, init?: R
     // chosen for the upstream, and this hop goes to our backend, where cookie-only
     // SSO needs the session cookie even when the backend is cross-origin.
     credentials: init?.credentials ?? 'include',
-    signal: init?.signal,
+    signal: init?.signal ?? (input instanceof Request ? input.signal : undefined),
     // @ts-expect-error -- Bun/Tauri/modern browsers support duplex:'half' for streaming uploads
     duplex: 'half',
   })
@@ -181,43 +181,68 @@ export type ProxyFetchOptions = {
   isStandalone?: () => boolean
   /** Optional Tauri fetch override — defaults to `@tauri-apps/plugin-http` fetch.
    *  Tests inject a stub. */
-  tauriFetch?: typeof fetch
-  /** Effective `proxy_enabled` value. Defaults to `() => true`, which preserves
-   *  Hosted-mode (web) behaviour for callers that don't wire the user setting.
-   *
-   *  Web always proxies (browser CORS forces it — the toggle is disabled in the
-   *  UI). Tauri respects the user toggle; when off, requests go upstream-direct
-   *  via the Tauri HTTP plugin so the user's IP is hidden from us. Callers that
-   *  want to honour the toggle (the React provider and the module-scoped cache
-   *  in `src/ai/fetch.ts`) pass a getter that reads the `proxy_enabled` localStorage
-   *  key + derives the effective value per platform. */
+  tauriFetch?: typeof tauriFetch
+  /** Effective setting getter, read per request. Defaults to computeEffectiveProxyEnabled. */
   getProxyEnabled?: () => boolean
-  /** Whether `tauri-plugin-http` is registered in the current build. Defaults
-   *  to `getCapabilities()` (memoised) — tests inject a stub. When false, the
-   *  Tauri-direct path is unreachable (the plugin's JS shim would throw
-   *  "plugin http not found"), so we fall through to the hosted proxy even on
-   *  Tauri with `proxy_enabled=false`. Universal Proxy (THU-467) is the
-   *  intended path; this guard makes the toggle a no-op in builds that ship
-   *  without the native fetch capability. */
+  /** Whether native HTTP is registered. Missing capability fails closed on the direct path. */
   getNativeFetchCapability?: () => Promise<boolean>
+}
+
+/** An older native build cannot honour the user's direct-routing preference. */
+class NativeHttpUnavailableError extends Error {
+  constructor() {
+    super('Native HTTP is unavailable. Update Thunderbolt or enable Cloud Proxy in Preferences.')
+    this.name = 'NativeHttpUnavailableError'
+  }
 }
 
 /** Build a fetch implementation that hides Hosted/Standalone mode from callers. */
 export const createProxyFetch = (options: ProxyFetchOptions): FetchFn => {
   const proxyUrl = `${options.cloudUrl.replace(/\/$/, '')}/proxy`
   const readNativeFetchCapability =
-    options.getNativeFetchCapability ?? (() => getCapabilities().then((c) => c.native_fetch))
+    options.getNativeFetchCapability ?? (async () => (await getCapabilities()).native_fetch)
   const proxyFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const standalone = (options.isStandalone ?? isTauri)()
-    const proxyEnabled = options.getProxyEnabled?.() ?? true
-    if (standalone && !proxyEnabled && (await readNativeFetchCapability())) {
-      // Standalone + toggle off + plugin compiled in: hit the upstream directly
-      // through Tauri's HTTP plugin. Builds without `--features native_fetch`
-      // fall through to the hosted proxy (THU-467 Universal Proxy is the
-      // canonical path; the Tauri-direct branch is opt-in for builds that
-      // want to keep the user's IP off our backend).
-      const tFetch = options.tauriFetch ?? (tauriFetch as unknown as typeof fetch)
-      return tFetch(input as RequestInfo, init ?? {}) as unknown as Response
+    const proxyEnabled = options.getProxyEnabled?.() ?? computeEffectiveProxyEnabled(options.isStandalone)
+    if (standalone && !proxyEnabled) {
+      if (!(await readNativeFetchCapability())) {
+        throw new NativeHttpUnavailableError()
+      }
+      const tFetch = options.tauriFetch ?? tauriFetch
+      // The plugin reports cancellations as plain errors/strings; SDKs need the signal's AbortError.
+      const signal = init?.signal !== undefined ? init.signal : input instanceof Request ? input.signal : undefined
+      try {
+        const response = await tFetch(input, {
+          ...init,
+          signal,
+          // reqwest retains provider-specific credentials such as x-api-key across redirects.
+          maxRedirections: 0,
+        })
+        if (!signal || !response.body) {
+          return response
+        }
+        const reader = response.body.getReader()
+        const body = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              const { done, value } = await reader.read()
+              if (done) {
+                controller.close()
+              } else {
+                controller.enqueue(value)
+              }
+            } catch (error) {
+              controller.error(signal.aborted ? signal.reason : error)
+            }
+          },
+          cancel: (reason) => reader.cancel(reason),
+        })
+        const result = new Response(body, response)
+        Object.defineProperty(result, 'url', { value: response.url })
+        return result
+      } catch (error) {
+        throw signal?.aborted ? signal.reason : error
+      }
     }
 
     const proxyRequest = buildHostedRequest(proxyUrl, input as RequestInfo | URL, init)

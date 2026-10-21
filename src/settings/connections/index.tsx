@@ -31,7 +31,7 @@ import type { completeMcpOAuthFlow, startMcpOAuthFlow } from '@/lib/mcp-auth/web
 import { selfEnrollIrohNodeId } from '@/lib/iroh-enrollment'
 import { probeMcpServerTools } from '@/lib/mcp-connection-test'
 import { useMCP } from '@/lib/mcp-provider'
-import { computeEffectiveProxyEnabled, createProxyFetch } from '@/lib/proxy-fetch'
+import { createProxyFetch } from '@/lib/proxy-fetch'
 import type { StatusState } from '@/components/status-indicator'
 import { useLocalSettingsStore } from '@/stores/local-settings-store'
 import type { McpServer } from '@/types'
@@ -116,7 +116,6 @@ const ConnectionsPage = ({ deps = {} }: { deps?: ConnectionsPageDeps } = {}) => 
     createProxyFetch({
       cloudUrl,
       getProxyAuthToken: getAuthToken,
-      getProxyEnabled: () => computeEffectiveProxyEnabled(),
     })
 
   const {

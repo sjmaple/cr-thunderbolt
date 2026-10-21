@@ -17,10 +17,7 @@ export const fetch = async (input: RequestInfo | URL, init?: RequestInit): Promi
   }
 
   if (getLocalSetting('isNativeFetchEnabled')) {
-    // The "Use Native Fetch" dev setting can only be toggled on in builds
-    // compiled with `--features native_fetch`; guard against stale `true`
-    // values from prior builds so we don't invoke an unregistered plugin
-    // ("plugin http not found").
+    // Older shells may lack the plugin; avoid invoking an unregistered plugin.
     const { native_fetch: nativeFetchAvailable } = await getCapabilities()
     if (nativeFetchAvailable) {
       const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')

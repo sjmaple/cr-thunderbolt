@@ -409,6 +409,7 @@ export const createModel = async (modelConfig: Model, getProxyFetch: () => Fetch
       // Anthropic key never goes through Thunderbolt's session auth path.
       const anthropic = createAnthropic({
         apiKey: modelConfig.apiKey || '',
+        headers: { 'anthropic-dangerous-direct-browser-access': 'true' },
         fetch: getProxyFetch(),
       })
       return anthropic(modelConfig.model)

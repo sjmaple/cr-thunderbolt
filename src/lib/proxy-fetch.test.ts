@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { encodeWsBearer } from '@shared/ws-bearer'
 import { createProxyFetch, createProxyWebSocket } from './proxy-fetch'
 import { appVersionUnsupported, isAppVersionBlocked, resetAppVersionBlockedForTesting } from './app-version-unsupported'
-import { setAuthToken } from './auth-token'
+import { clearAuthToken, setAuthToken } from './auth-token'
 
 describe('createProxyFetch — Hosted mode', () => {
   it('rewrites caller headers to X-Proxy-Passthrough-* and sets the target URL header', async () => {
@@ -48,6 +48,34 @@ describe('createProxyFetch — Hosted mode', () => {
     expect(calls[0].headers.get('x-proxy-target-url')).toBe('https://example.com/api')
     expect(calls[0].headers.get('x-proxy-passthrough-content-type')).toBe('application/json')
     expect(calls[0].headers.get('x-proxy-passthrough-mcp-session-id')).toBe('sess-1')
+  })
+
+  it('preserves a Request signal on the hosted hop unless explicitly overridden', async () => {
+    for (const override of [false, true]) {
+      const inherited = new AbortController()
+      const explicit = new AbortController()
+      const sent: Request[] = []
+      const proxyFetch = createProxyFetch({
+        cloudUrl: 'https://backend.example/v1',
+        isStandalone: () => false,
+        fetchImpl: Object.assign(
+          async (input: RequestInfo | URL) => {
+            sent.push(input as Request)
+            return new Response('ok')
+          },
+          { preconnect: fetch.preconnect },
+        ),
+      })
+
+      await proxyFetch(
+        new Request('https://provider.example', { signal: inherited.signal }),
+        override ? { signal: explicit.signal } : undefined,
+      )
+      inherited.abort()
+      expect(sent[0].signal.aborted).toBe(!override)
+      explicit.abort()
+      expect(sent[0].signal.aborted).toBe(true)
+    }
   })
 
   it('unwraps X-Proxy-Passthrough-* response headers into normal-looking headers', async () => {
@@ -200,7 +228,7 @@ describe('createProxyFetch — Standalone (Tauri) mode', () => {
     expect(h.get('authorization')).toBe('Bearer abc')
   })
 
-  it('falls back to the hosted proxy when native_fetch is not compiled into the build', async () => {
+  it('throws an actionable named error without sending anything when native HTTP is missing', async () => {
     const tauriFetchMock = mock(async () => new Response('should-not-be-called', { status: 500 }))
     const hostedFetchMock = mock(async () => new Response('hosted', { status: 200 }))
 
@@ -213,17 +241,202 @@ describe('createProxyFetch — Standalone (Tauri) mode', () => {
       getNativeFetchCapability: () => Promise.resolve(false),
     })
 
-    await proxyFetch('https://example.com/api', { method: 'GET' })
+    await expect(proxyFetch('https://example.com/api')).rejects.toMatchObject({
+      name: 'NativeHttpUnavailableError',
+      message: expect.stringMatching(/update.*enable Cloud Proxy/i),
+    })
+    expect(tauriFetchMock).not.toHaveBeenCalled()
+    expect(hostedFetchMock).not.toHaveBeenCalled()
+  })
+})
 
-    expect(tauriFetchMock).toHaveBeenCalledTimes(0)
-    expect(hostedFetchMock).toHaveBeenCalledTimes(1)
-    const [hostedReq] = hostedFetchMock.mock.calls[0] as unknown as [Request]
-    expect(hostedReq.url).toBe('http://localhost:8000/v1/proxy')
-    expect(hostedReq.headers.get('x-proxy-target-url')).toBe('https://example.com/api')
+describe('createProxyFetch — native request boundaries', () => {
+  beforeEach(() => {
+    localStorage.removeItem('proxy_enabled')
+  })
+
+  afterEach(() => {
+    localStorage.removeItem('proxy_enabled')
+    clearAuthToken()
+    resetAppVersionBlockedForTesting()
+  })
+
+  it.each(['inherited', 'explicit', 'null'] as const)(
+    'disables native redirects and forwards the Request signal (signal: %s)',
+    async (override) => {
+      const native = mock(
+        async (_input: RequestInfo | URL, _init?: RequestInit & { maxRedirections?: number }) => new Response('ok'),
+      )
+      const request = new Request('https://provider.example/v1/messages', { signal: new AbortController().signal })
+      const explicitSignal = new AbortController().signal
+      const proxyFetch = createProxyFetch({
+        cloudUrl: 'https://backend.example/v1',
+        isStandalone: () => true,
+        getNativeFetchCapability: async () => true,
+        tauriFetch: native,
+        fetchImpl: Object.assign(async () => new Response('unexpected backend'), { preconnect: fetch.preconnect }),
+      })
+
+      await proxyFetch(
+        request,
+        override === 'inherited' ? undefined : { signal: override === 'null' ? null : explicitSignal },
+      )
+
+      expect(native.mock.calls[0][0]).toBe(request)
+      expect(native.mock.calls[0][1]?.signal).toBe(
+        override === 'inherited' ? request.signal : override === 'null' ? null : explicitSignal,
+      )
+      expect(native.mock.calls[0][1]?.maxRedirections).toBe(0)
+    },
+  )
+
+  it.each(['before', 'during'] as const)('reports AbortError when cancelled %s the native request', async (when) => {
+    const controller = new AbortController()
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => true,
+      getNativeFetchCapability: async () => true,
+      tauriFetch: async () => {
+        controller.abort()
+        throw new Error('Request cancelled')
+      },
+    })
+    if (when === 'before') {
+      controller.abort()
+    }
+
+    const pending = proxyFetch('https://provider.example', { signal: controller.signal })
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await expect(pending).rejects.toBe(controller.signal.reason)
+  })
+
+  it('normalizes cancelled native bodies to AbortError and preserves other stream errors', async () => {
+    for (const aborted of [false, true]) {
+      const controller = new AbortController()
+      let bodyController!: ReadableStreamDefaultController<Uint8Array>
+      const upstream = new ReadableStream<Uint8Array>({
+        start(stream) {
+          bodyController = stream
+          stream.enqueue(new TextEncoder().encode('chunk'))
+        },
+      })
+      const proxyFetch = createProxyFetch({
+        cloudUrl: 'https://backend.example/v1',
+        isStandalone: () => true,
+        getNativeFetchCapability: async () => true,
+        tauriFetch: async () => new Response(upstream, { status: 201, headers: { 'x-provider': 'value' } }),
+      })
+      const response = await proxyFetch('https://provider.example', { signal: controller.signal })
+
+      expect(response.status).toBe(201)
+      expect(response.headers.get('x-provider')).toBe('value')
+      const reader = response.body!.getReader()
+      expect(new TextDecoder().decode((await reader.read()).value)).toBe('chunk')
+      if (aborted) {
+        controller.abort()
+      }
+      bodyController.error('Request cancelled')
+      await expect(reader.read()).rejects.toBe(aborted ? controller.signal.reason : 'Request cancelled')
+    }
+  })
+
+  it('propagates native failures without retrying through the backend', async () => {
+    const failure = new TypeError('native connection failed')
+    const hosted = mock(async () => new Response('hosted'))
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => true,
+      getNativeFetchCapability: async () => true,
+      tauriFetch: async () => {
+        throw failure
+      },
+      fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
+    })
+
+    await expect(proxyFetch('https://provider.example')).rejects.toBe(failure)
+    expect(hosted).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [401, { code: 'UNAUTHENTICATED' }],
+    [426, { code: 'APP_VERSION_UNSUPPORTED', minAppVersion: '99.0.0' }],
+  ] as const)('does not treat a native provider %s as a backend rejection', async (status, body) => {
+    setAuthToken('backend-token')
+    const events: Event[] = []
+    const listener = (event: Event) => events.push(event)
+    window.addEventListener('powersync_credentials_invalid', listener)
+    window.addEventListener(appVersionUnsupported, listener)
+    const response = new Response(JSON.stringify(body), { status })
+    const proxyFetch = createProxyFetch({
+      cloudUrl: 'https://backend.example/v1',
+      isStandalone: () => true,
+      getNativeFetchCapability: async () => true,
+      tauriFetch: async () => response,
+      fetchImpl: Object.assign(async () => new Response('unexpected backend'), { preconnect: fetch.preconnect }),
+    })
+    try {
+      const result = await proxyFetch('https://provider.example')
+      expect(result).toBe(response)
+      expect(await result.json()).toEqual(body)
+      expect(events).toHaveLength(0)
+      expect(isAppVersionBlocked()).toBe(false)
+    } finally {
+      window.removeEventListener('powersync_credentials_invalid', listener)
+      window.removeEventListener(appVersionUnsupported, listener)
+    }
   })
 })
 
 describe('createProxyFetch — proxy_enabled toggle', () => {
+  afterEach(() => localStorage.removeItem('proxy_enabled'))
+
+  it.each([null, 'false'])(
+    'Tauri with stored %s defaults to native HTTP and never calls the backend',
+    async (stored) => {
+      localStorage.removeItem('proxy_enabled')
+      if (stored !== null) {
+        localStorage.setItem('proxy_enabled', stored)
+      }
+      const native = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('direct'))
+      const hosted = mock(async (_input: RequestInfo | URL) => new Response('hosted'))
+      const auth = mock(() => 'backend-token')
+      const proxyFetch = createProxyFetch({
+        cloudUrl: 'https://backend.example/v1',
+        isStandalone: () => true,
+        getNativeFetchCapability: async () => true,
+        tauriFetch: native,
+        fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
+        getProxyAuthToken: auth,
+      })
+
+      await proxyFetch('https://provider.example/v1/messages', { headers: { 'x-api-key': 'provider-key' } })
+
+      expect(native).toHaveBeenCalledTimes(1)
+      expect(hosted).not.toHaveBeenCalled()
+      expect(auth).not.toHaveBeenCalled()
+      const [, init] = native.mock.calls[0]
+      expect(new Headers(init?.headers).get('x-api-key')).toBe('provider-key')
+      expect(new Headers(init?.headers).has('x-app-version')).toBe(false)
+      expect(new Headers(init?.headers).has('authorization')).toBe(false)
+
+      localStorage.setItem('proxy_enabled', 'true')
+      await proxyFetch('https://provider.example/v1/messages')
+      expect(hosted).toHaveBeenCalledTimes(1)
+      expect(native).toHaveBeenCalledTimes(1)
+      const hostedRequest = new Request(hosted.mock.calls[0][0])
+      expect(hostedRequest.url).toBe('https://backend.example/v1/proxy')
+
+      localStorage.setItem('proxy_enabled', 'false')
+      const webFetch = createProxyFetch({
+        cloudUrl: 'https://backend.example/v1',
+        isStandalone: () => false,
+        fetchImpl: Object.assign(hosted, { preconnect: fetch.preconnect }),
+      })
+      await webFetch('https://provider.example/v1/messages')
+      expect(hosted).toHaveBeenCalledTimes(2)
+    },
+  )
+
   it('Tauri + toggle on: routes through the hosted proxy (privacy mode)', async () => {
     const tauriFetchMock = mock(async () => new Response('should-not-be-called', { status: 500 }))
     const hostedFetchMock = mock(async (input: RequestInfo | URL) => {
@@ -269,7 +482,7 @@ describe('createProxyFetch — proxy_enabled toggle', () => {
     expect(hostedReq.url).toBe('http://localhost:8000/v1/proxy')
   })
 
-  it('defaults getProxyEnabled to true when not provided (preserves Web behaviour)', async () => {
+  it('defaults to hosted routing on web when getProxyEnabled is omitted', async () => {
     const hostedFetchMock = mock(async () => new Response('ok', { status: 200 }))
 
     const proxyFetch = createProxyFetch({
@@ -440,7 +653,6 @@ describe('createProxyFetch — session rejected', () => {
     })
 
   beforeEach(() => {
-    localStorage.clear()
     setAuthToken('app-token')
     dispatchSpy = mock(() => true)
     window.dispatchEvent = dispatchSpy as unknown as typeof window.dispatchEvent
@@ -448,7 +660,7 @@ describe('createProxyFetch — session rejected', () => {
 
   afterEach(() => {
     window.dispatchEvent = originalDispatch
-    localStorage.clear()
+    clearAuthToken()
   })
 
   it('treats our own auth gate rejecting the outer hop as a lost session', async () => {

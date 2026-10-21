@@ -5,7 +5,6 @@
 import { invoke, isTauri as isTauriCore } from '@tauri-apps/api/core'
 import { platform, type Platform } from '@tauri-apps/plugin-os'
 import type { DatabaseType } from '../db/database'
-import { memoize } from './memoize'
 
 /** Matches Render PR preview hostnames: thunderbolt-pr-{number}.onrender.com */
 export const prPreviewHostRegex = /^thunderbolt-pr-\d+\.onrender\.com$/
@@ -247,21 +246,35 @@ export type Capabilities = {
 
 const defaultCapabilities: Capabilities = { native_fetch: false }
 
-// Fetch once, then memoize for the rest of the session.
-const fetchCapabilities = memoize(async (): Promise<Capabilities> => {
-  if (!isTauri()) {
-    return defaultCapabilities
+/** Create an independent capability cache with injectable shell access. */
+export const createCapabilitiesGetter = (
+  invokeCapabilities: () => Promise<Capabilities> = () => invoke<Capabilities>('capabilities'),
+  isNative = isTauri,
+) => {
+  let capabilitiesPromise: Promise<Capabilities> | undefined
+
+  /** Probe the shell without retaining transient IPC failures. */
+  const fetchCapabilities = async (): Promise<Capabilities> => {
+    try {
+      return await invokeCapabilities()
+    } catch (error) {
+      capabilitiesPromise = undefined
+      console.error('Failed to retrieve capabilities:', error)
+      return defaultCapabilities
+    }
   }
 
-  try {
-    return await invoke<Capabilities>('capabilities')
-  } catch (err) {
-    console.error('Failed to retrieve capabilities:', err)
-    return defaultCapabilities
+  return (): Promise<Capabilities> => {
+    if (!isNative()) {
+      return Promise.resolve(defaultCapabilities)
+    }
+    capabilitiesPromise ??= fetchCapabilities()
+    return capabilitiesPromise
   }
-}, 'capabilities')
+}
 
-export const getCapabilities = (): Promise<Capabilities> => fetchCapabilities()
+/** Cache successful native capability probes; retry after transient IPC failures. */
+export const getCapabilities = createCapabilitiesGetter()
 
 /**
  * Determines the appropriate database type based on the platform and the
