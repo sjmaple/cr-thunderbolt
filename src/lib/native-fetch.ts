@@ -3,6 +3,29 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+import { isPrivateOrInternalAddress, parseIpAddress } from '@shared/ip-classification'
+
+/** Upgrade public HTTP targets while allowing device-local HTTP servers. */
+const upgradeNativeTarget = (input: RequestInfo | URL): RequestInfo | URL => {
+  const url = new URL(input instanceof Request ? input.url : input.toString())
+  if (url.protocol !== 'http:') {
+    return input
+  }
+  const host = url.hostname.replace(/\.$/, '')
+  const ip = parseIpAddress(host)
+  if (
+    (ip && isPrivateOrInternalAddress(ip)) ||
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === 'host.docker.internal' ||
+    host.endsWith('.local')
+  ) {
+    return input
+  }
+  // Arbitrary split-DNS private FQDNs are upgraded too; the hosted proxy also upgraded and SSRF-blocked them.
+  url.protocol = 'https:'
+  return input instanceof Request ? new Request(url, input) : url
+}
 
 /** Native HTTP with Fetch-compatible failures, cancellation and no credential-bearing redirects. */
 export const nativeFetch = async (
@@ -12,6 +35,7 @@ export const nativeFetch = async (
 ): Promise<Response> => {
   const signal = init?.signal !== undefined ? init.signal : input instanceof Request ? input.signal : undefined
   signal?.throwIfAborted()
+  const target = upgradeNativeTarget(input)
   // The plugin retains anonymous listeners; isolate them from shared MCP session signals.
   const child = new AbortController()
   const abort = () => child.abort(signal?.reason)
@@ -21,7 +45,7 @@ export const nativeFetch = async (
 
   const send = async () => {
     try {
-      const response = await fetchImpl(input, { ...init, signal: child.signal, maxRedirections: 0 })
+      const response = await fetchImpl(target, { ...init, signal: child.signal, maxRedirections: 0 })
       if (signal?.aborted) {
         await response.body?.cancel(signal.reason)
         throw signal.reason
